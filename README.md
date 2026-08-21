@@ -8,7 +8,7 @@
 ## Features
 - **Real-time 3D preview**: Open a 3×3 Crafting Table and place ingredients — each one floats above its slot in 3D. When a recipe matches, the result hovers above the materials and slowly rotates. Change the recipe and the preview updates instantly.
 - **Keep items after closing (optional)**: Keeps the ingredients at the table when the GUI closes, like using the workbench as a container — reopen the same table to view or keep crafting. Persisted state survives and syncs in multiplayer.
-- **Highly customizable**: Floating / flat material styles, wave / sync / none floating animations, facing follows the player or stays fixed, pop-in growth animation, render distance, sizes, spacing, heights, speeds and amplitudes — all adjustable.
+- **Highly customizable**: Floating / flat material styles, wave / sync / none floating animations, facing follows the player or stays fixed, pop-in growth animation, render distance, sizes, spacing, heights, speeds and amplitudes — all adjustable (compatible with various resource packs).
 - **Performance-friendly**: Idle workbenches cost zero per frame; previews beyond the render distance are skipped automatically; render state is reused across frames, integration-pack friendly.
 - **LAN / dedicated server support**: Works in singleplayer, LAN and dedicated servers; material state, table facing and kept items sync between clients when both sides have the mod.
 - **Mod Menu config screen**: All animation parameters can be adjusted graphically via Mod Menu + Cloth Config, applied immediately without restart.

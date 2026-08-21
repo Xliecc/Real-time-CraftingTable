@@ -1,6 +1,5 @@
 package com.example;
 
-import com.example.block.PreviewBlockEntity;
 import com.example.crafting.CraftingGridStorage;
 import com.example.crafting.PlayerKeepPrefs;
 import com.example.crafting.TableFacing;
@@ -10,6 +9,10 @@ import com.example.network.CraftingTableOpenS2CPacket;
 import com.example.network.GridBroadcastScheduler;
 import com.example.network.KeepPreferenceC2SPacket;
 
+import com.google.gson.JsonElement;
+
+import com.mojang.serialization.JsonOps;
+
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -17,6 +20,7 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
+import net.minecraft.registry.RegistryOps;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
@@ -38,10 +42,6 @@ public class TemplateMod implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		// 标准方块实体渲染路径的类型：此处强制加载，触发 Registry.register（注册表访问必须在
-		// 初始化期完成）。该类型从不真正放进世界，只作为渲染状态（PreviewRenderState）的类型键。
-		net.minecraft.block.entity.BlockEntityType.getId(PreviewBlockEntity.TYPE);
-
 		// 联机支持（S2C 通道注册，双端都必须在初始化期完成）：
 		// ① 开桌坐标包：服务端 → 开桌玩家（客户端写入 OpenTableTracker 定位实时 GUI 预览）；
 		// ② 保留记录包：服务端 → 追踪区块的玩家（关闭后保留预览的跨客户端同步）。
@@ -69,9 +69,8 @@ public class TemplateMod implements ModInitializer {
 		// 同一 JVM 缓存里已有数据的幂等副本，无害。
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			ServerPlayerEntity player = handler.getPlayer();
-			net.minecraft.registry.RegistryOps<com.google.gson.JsonElement> ops =
-					net.minecraft.registry.RegistryOps.of(com.mojang.serialization.JsonOps.INSTANCE,
-							server.getRegistryManager());
+			RegistryOps<JsonElement> ops =
+					RegistryOps.of(JsonOps.INSTANCE, server.getRegistryManager());
 			for (CraftingGridStorage.SyncEntry entry
 					: CraftingGridStorage.peekAllForSync(server.getRegistryManager())) {
 				ServerPlayNetworking.send(player, CraftingGridStoredS2CPacket.fromGridData(

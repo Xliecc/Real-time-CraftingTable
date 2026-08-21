@@ -1,7 +1,6 @@
 package com.example.client;
 
-import com.example.block.PreviewBlockEntity;
-import com.example.client.crafting.PreviewBlockEntityRenderer;
+import com.example.client.crafting.CraftingPreviewRenderer;
 import com.example.config.PreviewConfig;
 import com.example.crafting.CraftingGridStorage;
 import com.example.crafting.OpenTableTracker;
@@ -18,7 +17,6 @@ import com.mojang.serialization.JsonOps;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.client.rendering.v1.BlockEntityRendererRegistry;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.item.ItemStack;
@@ -30,11 +28,10 @@ import java.util.List;
 public class TemplateModClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
-		// 预览渲染：正常视图与光影阴影 pass 都走标准方块实体路径
-		// （WorldRendererMixin + IrisShadowRendererMixin 分别把预览状态追加进
-		// blockEntityRenderStates，由 BlockEntityRenderManager 统一渲染，与 Visual Workbench 同链）。
-		// 注册预览方块实体的渲染器（渲染状态由 CraftingPreviewRenderer 每帧动态构造）。
-		BlockEntityRendererRegistry.register(PreviewBlockEntity.TYPE, PreviewBlockEntityRenderer::new);
+		// 预览渲染（vanilla 联机兼容）：不再注册自定义 BlockEntityType/渲染器——那会进联机
+		// 注册表同步、未装 mod 的 vanilla 客户端被拒。渲染由 WorldRendererMixin /
+		// IrisShadowRendererMixin 追加预览状态 + BlockEntityRenderManagerMixin 手工渲染（无
+		// 注册表痕迹）。参见 BlockEntityRenderManagerMixin 类注释。
 
 		// keep 偏好上报（C2S）：客户端把自己的「关闭后保留材料」偏好发服务端（服务端据此按
 		// 玩家判定关桌是否保留，而非用房主/服务端全局配置）。⋆⋆ 客户端在各端持有独立 Config。

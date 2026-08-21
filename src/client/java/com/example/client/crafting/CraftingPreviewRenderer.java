@@ -886,7 +886,7 @@ public final class CraftingPreviewRenderer {
 	 *
 	 * <p>矩阵必须在调用前已平移到工作台方块左下角（相机相对），本方法不做任何平移/压栈；
 	 * 光照由调用方提供（状态内存储的 lightmap）。
-	 * 被正常视图与阴影 pass 的 {@link PreviewBlockEntityRenderer} 共用——两处动画状态
+	 * 被正常视图与阴影 pass 的 {@link BlockEntityRenderManagerMixin} 共用——两处动画状态
 	 * （FACING_STATE 按 tablePos 共享）严格一致。
 	 */
 	public static void renderPreviewGeometry(MatrixStack matrices, OrderedRenderCommandQueue queue,

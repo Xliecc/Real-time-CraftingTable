@@ -10,6 +10,18 @@
 
 ---
 
+## English Overview
+
+**Real-time CraftingTable** is a **Fabric** mod for **Minecraft 1.21.11** that shows a live **3D preview of your crafting result** right above the crafting table. Place ingredients into the 3×3 grid and they float above their slots in 3D; when a recipe matches, the result hovers above the materials and slowly rotates. Close the screen and the materials stay on the table — reopen the same workbench to keep crafting.
+
+- 🌐 **Client + Server**: works in singleplayer, LAN and dedicated servers; materials, facing and kept items sync when both sides have the mod.
+- 🧩 **No new content**: adds no items, blocks, recipes or world data — safe for existing worlds and other mods.
+- 🎛️ **Fully customizable**: floating style, animations, sizes, spacing, distances — all adjustable via **Mod Menu** + **Cloth Config**.
+
+**Requirements:** Minecraft 1.21.11 · Fabric Loader ≥ 0.19.3 · Fabric API · Java 21+.
+**Optional:** [Mod Menu](https://modrinth.com/mod/modmenu) and [Cloth Config](https://modrinth.com/mod/cloth-config) for the config screen.
+**Install:** put the jar into `.minecraft/mods/` and launch the game.
+
 ## 功能一览
 
 - **3D 悬浮材料**：每种放入合成格的材料以立体模型悬浮在对应槽位正上方，随配方实时更新。

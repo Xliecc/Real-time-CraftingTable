@@ -112,5 +112,5 @@ A real-time **3D preview** of your crafting result floating **above the workbenc
 
 ## 6. 待办提醒
 
-- [ ] 上传后补充 **homepage / contact**（暂无 GitHub，等建仓后把 `contact` 加回 `fabric.mod.json` 并在此补链接）。
+- [x] **homepage / contact 已补**：GitHub 仓库已建（https://github.com/Xliecc/real-time-crafting-table），`fabric.mod.json` 的 `contact`（homepage + sources）已加回并随 jar 构建。
 - [ ] 上传成功后把 Modrinth 项目链接回填到 README。

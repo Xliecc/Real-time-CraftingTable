@@ -7,6 +7,10 @@
 	"authors": [
 		"Xliecc"
 	],
+	"contact": {
+		"homepage": "https://github.com/Xliecc/real-time-crafting-table",
+		"sources": "https://github.com/Xliecc/real-time-crafting-table"
+	},
 	"license": "MIT",
 	"icon": "assets/real-time-crafting-table/icon.png",
 	"environment": "*",

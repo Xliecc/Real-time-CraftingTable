@@ -1,0 +1,37 @@
+{
+	"schemaVersion": 1,
+	"id": "real-time-crafting-table",
+	"version": "${version}",
+	"name": "Real-time CraftingTable",
+	"description": "在合成台上方以3D的形式实时预览合成结果，并且拥有丝滑的动画与大量自定义配置。 / Real-time CraftingTable: a real-time 3D preview of your crafting result above the workbench, with smooth animations and lots of customization.",
+	"authors": [
+		"Xliecc"
+	],
+	"license": "MIT",
+	"icon": "assets/real-time-crafting-table/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.example.TemplateMod"
+		],
+		"client": [
+			"com.example.client.TemplateModClient"
+		],
+		"modmenu": [
+			"com.example.client.config.PreviewModMenu"
+		]
+	},
+	"mixins": [
+		"real-time-crafting-table.mixins.json",
+		{
+			"config": "real-time-crafting-table.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}

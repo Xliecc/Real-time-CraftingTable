@@ -16,8 +16,6 @@
 Adds no new items, blocks, recipes or world data — purely a visual enhancement (client + server co-op).
 
 ## Dependencies
-- Minecraft **1.21.11**
-- Fabric Loader ≥ **0.19.3**
 - Fabric API
 - Optional: Mod Menu + Cloth Config (provide the config screen; the mod runs fine without them)
 

@@ -2,7 +2,7 @@
 
 <img src="src/main/resources/assets/real-time-crafting-table/icon.png" alt="实时工作台" width="128"/>
 
-**工作台 3D 实时合成预览——材料悬浮在槽位上方，配方成立时结果浮于材料之上并缓慢旋转。**
+**工作台 3D 实时合成预览——材料悬浮在槽位上方，配方成立时结果浮于材料之上并缓慢旋转，并且它们都有丝滑的动画效果**
 
 > 为原版工作台添加 **3D 实时预览** 的 Fabric 模组。客户端单独装即可用——连 vanilla 服务器也行。作者：Xliecc　｜　许可：MIT
 

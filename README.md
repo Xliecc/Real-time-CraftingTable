@@ -5,7 +5,7 @@
 
 📖 **[中文说明](README_zh.md)**
 
-## Features
+## ✨ Features
 - **Real-time 3D preview**: Open a 3×3 Crafting Table and place ingredients — each one floats above its slot in 3D. When a recipe matches, the result hovers above the materials and slowly rotates. Change the recipe and the preview updates instantly.
 - **Keep items after closing (optional)**: Keeps the ingredients at the table when the GUI closes, like using the workbench as a container — reopen the same table to view or keep crafting. Persisted state survives and syncs in multiplayer.
 - **Highly customizable**: Floating / flat material styles, wave / sync / none floating animations, facing follows the player or stays fixed, pop-in growth animation, render distance, sizes, spacing, heights, speeds and amplitudes — all adjustable (compatible with various resource packs).
@@ -15,7 +15,7 @@
 
 Adds no new items, blocks, recipes or world data — purely a visual enhancement (client + server co-op).
 
-## Dependencies
+## 📦 Dependencies
 - Fabric API
 - Optional: Mod Menu + Cloth Config (provide the config screen; the mod runs fine without them)
 
@@ -24,7 +24,7 @@ Put `build/libs/Real-time CraftingTable-1.0.0.jar` into `.minecraft/mods/`.
 
 > Tip: With Mod Menu + Cloth Config installed, the graphical config screen opens from Mod Menu (optional; the mod runs fine without them).
 
-## Configuration
+## ⚙️ Configuration
 - Open Mod Menu → this mod → config screen for graphical editing.
 - Or edit `config/real-time-crafting-table.json` directly (auto-generated on first launch).
 - Key adjustable values: enable toggle, floating type, visual style, facing mode, render distance, item/result sizes, heights, spacing, speeds, amplitudes, growth animation, keep-items-when-closed, etc.
@@ -53,7 +53,7 @@ Artifacts are produced at `build/libs/Real-time CraftingTable-<version>.jar` (a 
 - **Config screen missing with Mod Menu installed**: Install [Cloth Config](https://modrinth.com/mod/cloth-config) as well (it is pulled in automatically by Mod Menu).
 - **Keep-items-when-closed not working**: That option lives in the server-side config — the integrated server (host) config in singleplayer, or the server files on a dedicated server.
 
-## License
+## 📜 License
 [MIT](LICENSE) © 2026 Xliecc
 
 ## Acknowledgements

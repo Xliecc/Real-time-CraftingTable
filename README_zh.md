@@ -16,8 +16,6 @@
 不新增任何物品 / 方块 / 配方 / 世界内容——纯视觉增强（客户端 × 服务端配合）。
 
 ## 依赖
-- Minecraft **1.21.11**
-- Fabric Loader ≥ **0.19.3**
 - Fabric API
 - 可选：Mod Menu + Cloth Config（提供配置界面；不装也能正常运行）
 

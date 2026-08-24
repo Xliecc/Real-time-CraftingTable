@@ -4,7 +4,7 @@
 
 **A real-time 3D preview of your crafting result — materials float above the workbench, and the result hovers and slowly rotates above them.**
 
-> A Fabric mod that adds a **real-time 3D preview** to the vanilla Crafting Table. Install on your client and it works — even on vanilla servers. *(Client and server are independent: either side may be installed alone.)*
+> A Fabric mod that adds a **real-time 3D preview** to the vanilla Crafting Table. Install on your client and it works — even on vanilla servers. Author: Xliecc　｜　License: MIT
 
 📖 **[中文说明](README_zh.md)**
 
@@ -21,16 +21,17 @@
 
 ## ⚙️ Configuration
 - Mod Menu → this mod → config screen; all changes apply immediately
-- Or edit `config/real-time-crafting-table.json` (auto-generated on first run)
-- **⚠️ `keep-items-when-closed` is OFF by default** — enable it to keep materials in the table after closing the GUI
+- Or edit `config/real-time-crafting-table.json` directly (auto-generated on first run)
+- **⚠️ `keep-items-when-closed` is OFF by default** — enable it to keep materials in the table after closing the GUI. This is the most important setting to know about
 
 ## ❓ FAQ
 - **Preview not showing?** Make sure the workbench is in view and the mod is installed on your client
-- **No config screen with Mod Menu?** You also need Cloth Config
-- **Keep not working?** Each player controls their own keep setting in their own config — it applies per-player in LAN, not the host's. Enable it on the client that should keep items
+- **No config screen with Mod Menu?** You also need [Cloth Config](https://modrinth.com/mod/cloth-config)
+- **Items not kept after closing the table?** Make sure you have enabled the "Keep materials when closing the table" option in the config. If two players with different configs open the same crafting table GUI at the same time in multiplayer, the config of whoever closes it last takes effect (the two configs don't interfere with each other)
+- **Why doesn't the preview rotate with me when I reopen the GUI?** In multiplayer, the rotation follows the last player who operated the table. It only follows you after you actually interact with the table (e.g., pick up an item from the table and put it back)
 
 ## 🙏 Acknowledgements
-- **Visual Workbench** ([Modrinth](https://modrinth.com/mod/visual-workbench), MPL-2.0): interaction concept inspired by it; code is an independent rewrite
+- **Visual Workbench** ([Modrinth](https://modrinth.com/mod/visual-workbench), MPL-2.0): the idea was inspired by it; the code is an independent rewrite
 
 ## 📜 License
 [MIT](LICENSE) © 2026 Xliecc

@@ -2,7 +2,7 @@
 
 <img src="src/main/resources/assets/real-time-crafting-table/icon.png" alt="Real-time CraftingTable" width="128"/>
 
-**A real-time 3D preview of your crafting result — materials float above the workbench, and the result hovers and slowly rotates above them.**
+**A real-time 3D preview of your crafting result — materials float above the workbench, and the result hovers and slowly rotates above them, And they all feature smooth animations.**
 
 > A Fabric mod that adds a **real-time 3D preview** to the vanilla Crafting Table. Install on your client and it works — even on vanilla servers. Author: Xliecc　｜　License: MIT
 

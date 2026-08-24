@@ -27,7 +27,7 @@
 ## ❓ FAQ
 - **Preview not showing?** Make sure the workbench is in view and the mod is installed on your client
 - **No config screen with Mod Menu?** You also need Cloth Config
-- **Keep not working?** That option lives in the server-side config — the host config in singleplayer, or the server files on a dedicated server
+- **Keep not working?** Each player controls their own keep setting in their own config — it applies per-player in LAN, not the host's. Enable it on the client that should keep items
 
 ## 🙏 Acknowledgements
 - **Visual Workbench** ([Modrinth](https://modrinth.com/mod/visual-workbench), MPL-2.0): interaction concept inspired by it; code is an independent rewrite

@@ -4,6 +4,8 @@
 
 **工作台 3D 实时合成预览——材料悬浮在槽位上方，配方成立时结果浮于材料之上并缓慢旋转，并且它们都有丝滑的动画效果**
 
+![Real-time CraftingTable](https://cdn-alt.modrinth.com/data/UPOoH4hE/images/b512228a14d0567c270a26cb015f44de71fb28fe.gif)
+
 > 为原版工作台添加 **3D 实时预览** 的 Fabric 模组。客户端单独装即可用——连 vanilla 服务器也行。作者：Xliecc　｜　许可：MIT
 
 📖 **[English README](README.md)**

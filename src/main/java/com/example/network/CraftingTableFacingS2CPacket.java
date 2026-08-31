@@ -2,18 +2,17 @@ package com.example.network;
 
 import com.example.TemplateMod;
 
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 import java.util.UUID;
 
 /**
  * 服务端 → 客户端：某工作台的「最后操作者」同步（开桌方位扇区 + 最后操作者 UUID）。
  *
- * <p>发送时机：玩家开桌（构造真实 {@code CraftingScreenHandler}）时服务端计算该玩家
+ * <p>发送时机：玩家开桌（构造真实 {@code CraftingMenu}）时服务端计算该玩家
  * 相对工作台的 90° 扇形，连同其 UUID 一起广播给追踪该区块的所有玩家（含开桌者本人）——
  * 客户端据此：
  * <ul>
@@ -26,28 +25,22 @@ import java.util.UUID;
  * <p>单机（集成服务器）下服务端已直写 {@link com.example.crafting.TableFacing}，
  * 此包为幂等重复、无害。
  */
-public record CraftingTableFacingS2CPacket(BlockPos pos, int sector, UUID operatorUuid) implements CustomPayload {
+public record CraftingTableFacingS2CPacket(BlockPos pos, int sector, UUID operatorUuid) implements CustomPacketPayload {
 
-	public static final CustomPayload.Id<CraftingTableFacingS2CPacket> ID =
-			new CustomPayload.Id<>(Identifier.of(TemplateMod.MOD_ID, "crafting_table_facing"));
+	public static final CustomPacketPayload.Type<CraftingTableFacingS2CPacket> TYPE =
+			CustomPacketPayload.createType(TemplateMod.MOD_ID + ":crafting_table_facing");
 
-	public static final PacketCodec<RegistryByteBuf, CraftingTableFacingS2CPacket> CODEC =
-			new PacketCodec<>() {
-				@Override
-				public void encode(RegistryByteBuf buf, CraftingTableFacingS2CPacket pkt) {
-					buf.writeBlockPos(pkt.pos);
-					buf.writeInt(pkt.sector);
-					buf.writeUuid(pkt.operatorUuid);
-				}
-
-				@Override
-				public CraftingTableFacingS2CPacket decode(RegistryByteBuf buf) {
-					return new CraftingTableFacingS2CPacket(buf.readBlockPos(), buf.readInt(), buf.readUuid());
-				}
-			};
+	public static final StreamCodec<RegistryFriendlyByteBuf, CraftingTableFacingS2CPacket> STREAM_CODEC =
+			StreamCodec.of(
+					(buf, pkt) -> {
+						buf.writeBlockPos(pkt.pos);
+						buf.writeInt(pkt.sector);
+						buf.writeUUID(pkt.operatorUuid);
+					},
+					buf -> new CraftingTableFacingS2CPacket(buf.readBlockPos(), buf.readInt(), buf.readUUID()));
 
 	@Override
-	public CustomPayload.Id<? extends CustomPayload> getId() {
-		return ID;
+	public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+		return TYPE;
 	}
 }

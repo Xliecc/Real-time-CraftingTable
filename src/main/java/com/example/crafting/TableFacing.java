@@ -1,6 +1,6 @@
 package com.example.crafting;
 
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
 
 import java.util.Map;
 import java.util.UUID;
@@ -47,10 +47,10 @@ public final class TableFacing {
 	 */
 	public static void setFacing(BlockPos pos, int sector, UUID player) {
 		if (sector >= 0 && sector < SECTOR_COUNT) {
-			SECTOR.put(pos.toImmutable(), sector);
+			SECTOR.put(pos, sector);
 		}
 		if (player != null) {
-			LAST_OPERATOR.put(pos.toImmutable(), player);
+			LAST_OPERATOR.put(pos, player);
 		}
 	}
 

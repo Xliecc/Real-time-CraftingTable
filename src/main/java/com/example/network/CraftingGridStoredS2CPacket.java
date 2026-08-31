@@ -7,13 +7,12 @@ import com.google.gson.JsonParser;
 
 import com.mojang.serialization.DataResult;
 
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.registry.RegistryOps;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,10 +35,10 @@ import java.util.List;
  * 不依赖条目对象身份，可正确往返。
  */
 public record CraftingGridStoredS2CPacket(BlockPos pos, String dimensionKey,
-		List<String> inputJson, String resultJson) implements CustomPayload {
+		List<String> inputJson, String resultJson) implements CustomPacketPayload {
 
-	public static final CustomPayload.Id<CraftingGridStoredS2CPacket> ID =
-			new CustomPayload.Id<>(Identifier.of(TemplateMod.MOD_ID, "crafting_grid_stored"));
+	public static final CustomPacketPayload.Type<CraftingGridStoredS2CPacket> TYPE =
+			CustomPacketPayload.createType(TemplateMod.MOD_ID + ":crafting_grid_stored");
 
 	private static final int GRID_SIZE = 9;
 
@@ -94,35 +93,31 @@ public record CraftingGridStoredS2CPacket(BlockPos pos, String dimensionKey,
 		return new CraftingGridStoredS2CPacket(pos, dimensionKey, inputJson, resultJson);
 	}
 
-	public static final PacketCodec<RegistryByteBuf, CraftingGridStoredS2CPacket> CODEC =
-			new PacketCodec<>() {
-				@Override
-				public void encode(RegistryByteBuf buf, CraftingGridStoredS2CPacket pkt) {
-					buf.writeBlockPos(pkt.pos);
-					buf.writeString(pkt.dimensionKey);
-					for (int i = 0; i < GRID_SIZE; i++) {
-						String s = pkt.inputJson != null && i < pkt.inputJson.size()
-								? pkt.inputJson.get(i) : "";
-						buf.writeString(s);
-					}
-					buf.writeString(pkt.resultJson == null ? "" : pkt.resultJson);
-				}
-
-				@Override
-				public CraftingGridStoredS2CPacket decode(RegistryByteBuf buf) {
-					BlockPos pos = buf.readBlockPos();
-					String dimensionKey = buf.readString();
-					List<String> inputs = new ArrayList<>(GRID_SIZE);
-					for (int i = 0; i < GRID_SIZE; i++) {
-						inputs.add(buf.readString());
-					}
-					String resultJson = buf.readString();
-					return new CraftingGridStoredS2CPacket(pos, dimensionKey, inputs, resultJson);
-				}
-			};
+	public static final StreamCodec<RegistryFriendlyByteBuf, CraftingGridStoredS2CPacket> STREAM_CODEC =
+			StreamCodec.of(
+					(buf, pkt) -> {
+						buf.writeBlockPos(pkt.pos);
+						buf.writeUtf(pkt.dimensionKey);
+						for (int i = 0; i < GRID_SIZE; i++) {
+							String s = pkt.inputJson != null && i < pkt.inputJson.size()
+									? pkt.inputJson.get(i) : "";
+							buf.writeUtf(s);
+						}
+						buf.writeUtf(pkt.resultJson == null ? "" : pkt.resultJson);
+					},
+					buf -> {
+						BlockPos pos = buf.readBlockPos();
+						String dimensionKey = buf.readUtf();
+						List<String> inputs = new ArrayList<>(GRID_SIZE);
+						for (int i = 0; i < GRID_SIZE; i++) {
+							inputs.add(buf.readUtf());
+						}
+						String resultJson = buf.readUtf();
+						return new CraftingGridStoredS2CPacket(pos, dimensionKey, inputs, resultJson);
+					});
 
 	@Override
-	public CustomPayload.Id<? extends CustomPayload> getId() {
-		return ID;
+	public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+		return TYPE;
 	}
 }

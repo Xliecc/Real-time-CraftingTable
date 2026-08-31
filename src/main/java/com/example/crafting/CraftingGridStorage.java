@@ -12,11 +12,11 @@ import com.mojang.serialization.JsonOps;
 
 import net.fabricmc.loader.api.FabricLoader;
 
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.RegistryOps;
-import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.BlockPos;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -106,17 +106,17 @@ public final class CraftingGridStorage {
 		return dimensionId + ":" + pos.getX() + "," + pos.getY() + "," + pos.getZ();
 	}
 
-	private static String key(ServerWorld world, BlockPos pos) {
-		return key(world.getRegistryKey().getValue().toString(), pos);
+	private static String key(ServerLevel world, BlockPos pos) {
+		return key(world.dimension().identifier().toString(), pos);
 	}
 
-	private static RegistryOps<JsonElement> ops(ServerWorld world) {
-		return ops(world.getServer().getRegistryManager());
+	private static RegistryOps<JsonElement> ops(ServerLevel world) {
+		return ops(world.getServer().registryAccess());
 	}
 
-	/** 注册表来源只需 WrapperLookup（ServerWorld 的或 MinecraftServer 的皆可）。 */
-	private static RegistryOps<JsonElement> ops(RegistryWrapper.WrapperLookup registryManager) {
-		return RegistryOps.of(JsonOps.INSTANCE, registryManager);
+	/** 注册表来源只需 Frozen（ServerLevel 的或 MinecraftServer 的皆可）。 */
+	private static RegistryOps<JsonElement> ops(RegistryAccess.Frozen registryManager) {
+		return RegistryOps.create(JsonOps.INSTANCE, registryManager);
 	}
 
 	/** 把 9 格输入规范化为恰好 9 项（不足补空、多则截断），并对每项防御性拷贝。 */
@@ -139,61 +139,29 @@ public final class CraftingGridStorage {
 	 * 附魔条目携带的 {@code Enchantment} <b>值对象</b>并非注册表内的规范实例（对象身份不同，
 	 * 仅 key 相同）。原版/自订包用 {@code ItemStack.PACKET_CODEC} 编码时按值对象身份查 raw id
 	 * （{@code Registry.getRawId}），查不到就抛 {@code Can't find id for Reference{...}} 断线。
-	 * 这里用 {@code reg.getEntry(key)} 拿注册表规范条目重建组件，值对象与注册表一致，编码不再炸。
+	 * 这里用 {@code reg.get(key)} 拿注册表规范条目重建组件，值对象与注册表一致，编码不再炸。
 	 * 无法重解引用的条目（无 key 或 key 缺失）直接丢弃——这类条目本来也无法过网络编码。
 	 *
 	 * @param reg 服务端附魔注册表（能解析全部 key）
 	 * @param stack 待规范化栈（未改原对象，返回副本或原对象）
 	 */
 	public static ItemStack canonicalizeEnchantments(
-			net.minecraft.registry.Registry<net.minecraft.enchantment.Enchantment> reg, ItemStack stack) {
-		if (stack == null || stack.isEmpty() || !stack.hasEnchantments()) {
-			return stack;
-		}
-		net.minecraft.component.type.ItemEnchantmentsComponent enc = stack.getEnchantments();
-		java.util.Set<it.unimi.dsi.fastutil.objects.Object2IntMap.Entry<
-				net.minecraft.registry.entry.RegistryEntry<net.minecraft.enchantment.Enchantment>>> entries =
-				enc.getEnchantmentEntries();
-		if (entries.isEmpty()) {
-			return stack;
-		}
-		net.minecraft.component.type.ItemEnchantmentsComponent.Builder b =
-				new net.minecraft.component.type.ItemEnchantmentsComponent.Builder(
-						net.minecraft.component.type.ItemEnchantmentsComponent.DEFAULT);
-		boolean changed = false;
-		for (it.unimi.dsi.fastutil.objects.Object2IntMap.Entry<
-				net.minecraft.registry.entry.RegistryEntry<net.minecraft.enchantment.Enchantment>> e : entries) {
-			net.minecraft.registry.entry.RegistryEntry<net.minecraft.enchantment.Enchantment> entry = e.getKey();
-			net.minecraft.registry.RegistryKey<net.minecraft.enchantment.Enchantment> key =
-					entry.getKey().orElse(null);
-			if (key == null) {
-				changed = true; // 无 key 的条目无法重解引用，丢弃
-				continue;
-			}
-			net.minecraft.registry.entry.RegistryEntry<net.minecraft.enchantment.Enchantment> canonical =
-					reg.getEntry(key.getValue()).orElse(null);
-			if (canonical == null) {
-				changed = true; // key 不在注册表（本就不可能编码成功），丢弃
-				continue;
-			}
-			b.add(canonical, e.getIntValue());
-			if (canonical != entry) {
-				changed = true;
-			}
-		}
-		if (!changed) {
-			return stack;
-		}
-		ItemStack copy = stack.copy();
-		copy.set(net.minecraft.component.DataComponentTypes.ENCHANTMENTS, b.build());
-		return copy;
+			net.minecraft.core.Registry<net.minecraft.world.item.enchantment.Enchantment> reg, ItemStack stack) {
+		// 26.2（Java Edition 26.2）不再需要此项规范化：
+		//   - 附魔组件在 26.2 已是 Holder 体系（net.minecraft.core.Holder），网络传输走 ResourceKey
+		//     按 id 查找，不依赖条目对象身份（旧 1.21 时代 PACKET_CODEC 按 raw id 查值对象身份
+		//     才会炸「Can't find id for Reference」）；
+		//   - 本模组联机包已改用 JSON 字符串传输（CraftingGridStoredS2CPacket.toJson/fromJson），
+		//     走 RegistryOps + ItemStack.CODEC，按 key 编解码，天然规避对象身份问题。
+		// 故直接返回原栈（保留签名以兼容调用方）。
+		return stack;
 	}
 
 	/**
 	 * 把合成网格（前 {@code GRID_SIZE} 个槽位）及结果槽存入该位置并<b>落盘</b>；
 	 * 随后调用方负责清空网格。低频「终态」时机使用：关桌保留（最后一人）等。
 	 */
-	public static void store(ServerWorld world, BlockPos pos, List<ItemStack> inputs, ItemStack result) {
+	public static void store(ServerLevel world, BlockPos pos, List<ItemStack> inputs, ItemStack result) {
 		storeMemory(world, pos, inputs, result);
 		save(world);
 	}
@@ -204,13 +172,13 @@ public final class CraftingGridStorage {
 	 * （性能优化 P0-1，实测每点一下都写 JSON 文件）。
 	 * 落盘交给 {@link #store}（终态）、{@link #remove}（破坏）或 {@link #persist}（服务器停止）。
 	 */
-	public static void storeMemory(ServerWorld world, BlockPos pos, List<ItemStack> inputs, ItemStack result) {
+	public static void storeMemory(ServerLevel world, BlockPos pos, List<ItemStack> inputs, ItemStack result) {
 		synchronized (LOCK) {
 			ensureLoaded(world);
 			String k = key(world, pos);
-			net.minecraft.registry.Registry<net.minecraft.enchantment.Enchantment> reg =
-					world.getServer().getRegistryManager()
-							.getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+			net.minecraft.core.Registry<net.minecraft.world.item.enchantment.Enchantment> reg =
+					world.getServer().registryAccess()
+							.lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT);
 			List<ItemStack> norm = normalize(inputs);
 			List<ItemStack> canon = new ArrayList<>(norm.size());
 			for (ItemStack s : norm) {
@@ -226,7 +194,7 @@ public final class CraftingGridStorage {
 	 * 把当前内存缓存落盘（服务器正常停止时的兜底：编辑只写内存，若不落盘会丢最近编辑）。
 	 * 缓存未加载或为空时不写文件。调用方须持有 {@link #LOCK}（save 不自行加锁）。
 	 */
-	public static void persist(ServerWorld world) {
+	public static void persist(ServerLevel world) {
 		synchronized (LOCK) {
 			if (cache == null || cache.isEmpty()) {
 				return;
@@ -241,7 +209,7 @@ public final class CraftingGridStorage {
 	 * {@link #peekAll} 持续可见——避免「打开界面时记录被瞬时移除、实时内容尚未接管」的渲染空档
 	 * （预览闪没一瞬，实机反馈「点开工作台预览闪一下」）。关闭时 {@link #store} 会覆盖该记录。
 	 */
-	public static GridData peek(ServerWorld world, BlockPos pos) {
+	public static GridData peek(ServerLevel world, BlockPos pos) {
 		synchronized (LOCK) {
 			ensureLoaded(world);
 			return cache.get(key(world, pos));
@@ -253,7 +221,7 @@ public final class CraftingGridStorage {
 	 * 物品当作实体生成（本方法只管清数据，避免「下次放同一位置又残留物品」）。
 	 * 客户端侧由调用方通过广播全空记录同步清除（本方法不处理网络）。
 	 */
-	public static void remove(ServerWorld world, BlockPos pos) {
+	public static void remove(ServerLevel world, BlockPos pos) {
 		synchronized (LOCK) {
 			ensureLoaded(world);
 			cache.remove(key(world, pos));
@@ -300,12 +268,12 @@ public final class CraftingGridStorage {
 
 	/** 现存记录与待写入内容是否逐格相等（物品+数量+组件全等）。 */
 	private static boolean sameAs(GridData existing, List<ItemStack> inputs, ItemStack result) {
-		if (!ItemStack.areEqual(result, existing.result())) {
+		if (!ItemStack.matches(result, existing.result())) {
 			return false;
 		}
 		List<ItemStack> cur = existing.inputs();
 		for (int i = 0; i < GRID_SIZE; i++) {
-			if (!ItemStack.areEqual(
+			if (!ItemStack.matches(
 					i < cur.size() ? cur.get(i) : ItemStack.EMPTY,
 					i < inputs.size() ? inputs.get(i) : ItemStack.EMPTY)) {
 				return false;
@@ -391,7 +359,7 @@ public final class CraftingGridStorage {
 	 * 传入 MinecraftServer 的注册表管理器（JOIN 事件拿不到 world）：顺带触发文件加载——
 	 * 服务器刚启动还没人开过桌时缓存未加载，直接补发会漏掉上个会话的全部记录。
 	 */
-	public static List<SyncEntry> peekAllForSync(RegistryWrapper.WrapperLookup registryManager) {
+	public static List<SyncEntry> peekAllForSync(RegistryAccess.Frozen registryManager) {
 		synchronized (LOCK) {
 			ensureLoaded(registryManager);
 			if (cache == null) {
@@ -433,11 +401,11 @@ public final class CraftingGridStorage {
 		}
 	}
 
-	private static void ensureLoaded(ServerWorld world) {
-		ensureLoaded(world.getServer().getRegistryManager());
+	private static void ensureLoaded(ServerLevel world) {
+		ensureLoaded(world.getServer().registryAccess());
 	}
 
-	private static void ensureLoaded(RegistryWrapper.WrapperLookup registryManager) {
+	private static void ensureLoaded(RegistryAccess.Frozen registryManager) {
 		if (loaded) {
 			return;
 		}
@@ -459,7 +427,7 @@ public final class CraftingGridStorage {
 		}
 	}
 
-	private static void save(ServerWorld world) {
+	private static void save(ServerLevel world) {
 		try {
 			Path path = file();
 			Files.createDirectories(path.getParent());

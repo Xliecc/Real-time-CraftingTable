@@ -1,13 +1,13 @@
 package com.example.crafting;
 
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
 
 /**
  * 记录「当前正在使用的 3×3 工作台」的方块位置，供渲染线程在 GUI 打开时定位预览。
  *
- * <p><b>为什么不能直接读客户端 handler 的 {@code ScreenHandlerContext}：</b>客户端打开工作台
+ * <p><b>为什么不能直接读客户端 handler 的 {@code ContainerLevelAccess}：</b>客户端打开工作台
  * 界面时，{@code CraftingScreen} 里的 handler 是网络镜像——由
- * {@code ScreenHandlerType.create(syncId, inventory)} 用 {@code ScreenHandlerContext.EMPTY}
+ * {@code AbstractContainerMenuType.create(syncId, inventory)} 用 {@code ContainerLevelAccess.EMPTY}
  * 构造（OpenScreen 数据包只带 syncId/标题、不带方块坐标），因此客户端的 {@code context}
  * 恒为空，读不到坐标（23:24→23:44 实测 GUI 预览不渲染）。
  *

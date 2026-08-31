@@ -9,16 +9,16 @@ import com.example.crafting.TableFacing;
 import com.example.network.CraftingPreviewNetworking;
 import com.example.network.GridBroadcastScheduler;
 
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.inventory.Inventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.CraftingScreenHandler;
-import net.minecraft.screen.ScreenHandlerContext;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.Container;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.CraftingMenu;
+import net.minecraft.world.inventory.ContainerLevelAccess;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.BlockPos;
 
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -33,7 +33,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 为 {@link CraftingScreenHandler} 注入「关闭工作台时保留合成材料」逻辑（common：双端加载）。
+ * 为 {@link CraftingMenu} 注入「关闭工作台时保留合成材料」逻辑（common：双端加载）。
  *
  * <p>仅当配置 {@code keepItemsWhenClosed} 开启时生效：
  * <ul>
@@ -43,21 +43,21 @@ import java.util.UUID;
  *
  * <p><b>运行环境（联机支持后）：</b>mixin 已从 client 源集移到 common，物理服务端与物理客户端
  * 都会应用。真实服务端（单机集成服务器 / LAN / 独立服务器同构）持有真实
- * {@code ScreenHandlerContext}，负责存储/恢复/广播；客户端镜像（context 恒为 EMPTY）只做
+ * {@code ContainerLevelAccess}，负责存储/恢复/广播；客户端镜像（context 恒为 EMPTY）只做
  * 本地即时缓存写入（防关桌闪没）。工作台坐标与保留记录经 S2C 网络包同步给客户端渲染。
  *
  * <p>成员访问规则（踩坑记录）：
  * <ul>
- *   <li>{@code context}、{@code getInputSlots()}、{@code onContentChanged} 均声明在目标类
- *       {@code CraftingScreenHandler} 自身，可 {@code @Shadow}；</li>
- *   <li>**不能** {@code @Shadow} 父类 {@code AbstractCraftingScreenHandler} 的继承字段
+ *   <li>{@code context}、{@code getInputGridSlots()}、{@code onContentChanged} 均声明在目标类
+ *       {@code CraftingMenu} 自身，可 {@code @Shadow}；</li>
+ *   <li>**不能** {@code @Shadow} 父类 {@code AbstractCraftingMenu} 的继承字段
  *       （如 {@code craftingResultInventory}）：mixin 的 @Shadow 字段只在目标类自身查找，不遍历
  *       父类，实测启动崩溃 {@code @Shadow field field_52560 was not located in class_1714}；</li>
  *   <li>需要访问父类公开成员（如结果槽 {@code getSlot(0)}）时，用 cast 技巧：
- *       {@code (CraftingScreenHandler)(Object)this} 后直接调用（运行时 this 就是 handler 实例）。</li>
+ *       {@code (CraftingMenu)(Object)this} 后直接调用（运行时 this 就是 handler 实例）。</li>
  * </ul>
  */
-@Mixin(CraftingScreenHandler.class)
+@Mixin(CraftingMenu.class)
 public abstract class CraftingScreenHandlerMixin {
 
 	private static final int GRID_SIZE = 9;
@@ -67,12 +67,12 @@ public abstract class CraftingScreenHandlerMixin {
 
 	@Shadow
 	@Final
-	private ScreenHandlerContext context;
+	private ContainerLevelAccess context;
 
-	/** 该菜单所属玩家（CraftingScreenHandler 自身字段；onContentChanged 时用于「最后操作者」朝向）。 */
+	/** 该菜单所属玩家（CraftingMenu 自身字段；onContentChanged 时用于「最后操作者」朝向）。 */
 	@Shadow
 	@Final
-	private PlayerEntity player;
+	private Player player;
 
 	/** 共享写回重入保护（服务端单线程）：写回他人槽位会触发对方 onContentChanged →
 	 * 对方 syncLiveGrid 再进来时跳过（否则对方会被误记为「最后操作者」并重复广播）。
@@ -81,7 +81,7 @@ public abstract class CraftingScreenHandlerMixin {
 
 	/** 3×3 合成网格的槽位（由目标类自身声明，非继承）。 */
 	@Shadow
-	public abstract List<Slot> getInputSlots();
+	public abstract List<Slot> getInputGridSlots();
 
 	/** 网格内容变化后重算合成结果。 */
 	@Shadow
@@ -91,34 +91,34 @@ public abstract class CraftingScreenHandlerMixin {
 	 * 打开工作台（创建菜单）时：登记打开者、把该位置<b>权威内容</b>同步进自己的 3×3 网格
 	 * （共享合成网格：所有打开者看到同一份内容），并发包告知客户端工作台坐标（供渲染器
 	 * 定位 GUI 预览）。两个构造重载：2 参构造委托给 3 参构造并传
-	 * {@link ScreenHandlerContext#EMPTY}，因此只需拦截 3 参构造；EMPTY 上下文的 {@code run}
+	 * {@link ContainerLevelAccess#EMPTY}，因此只需拦截 3 参构造；EMPTY 上下文的 {@code run}
 	 * 是空操作，客户端镜像无害。
 	 *
 	 * <p>共享语义：不再「仅第一位恢复」——任意打开者网格都同步为该位置的权威内容；
 	 * 编辑经 {@link #templateMod$syncLiveGrid} 更新权威并写回所有打开者的网格槽位，
 	 * 任何人的操作都实时反映到所有人（后写覆盖）。
 	 */
-	@Inject(method = "<init>(ILnet/minecraft/entity/player/PlayerInventory;Lnet/minecraft/screen/ScreenHandlerContext;)V",
+	@Inject(method = "<init>(ILnet/minecraft/entity/player/Inventory;Lnet/minecraft/screen/ContainerLevelAccess;)V",
 			at = @At("RETURN"))
-	private void templateMod$restoreGridOnOpen(int syncId, PlayerInventory playerInventory,
-			ScreenHandlerContext context, CallbackInfo ci) {
-		// 仅对原版 CraftingScreenHandler 生效：VisualWorkbench 等 mod 的子类菜单
+	private void templateMod$restoreGridOnOpen(int syncId, Inventory playerInventory,
+			ContainerLevelAccess context, CallbackInfo ci) {
+		// 仅对原版 CraftingMenu 生效：VisualWorkbench 等 mod 的子类菜单
 		// （如 VisualCraftingMenu）在 super() 构造期间其 blockEntity 尚未赋值，本方法若
 		// 继续执行（setStack / onContentChanged → slotsChanged）会触发 NPE，导致
 		// 「点开工作台没反应」。原版合成台无此问题，行为完全不变。
-		if (((Object) this).getClass() != CraftingScreenHandler.class) {
+		if (((Object) this).getClass() != CraftingMenu.class) {
 			return;
 		}
-		this.context.run((world, pos) -> {
-			if (world instanceof ServerWorld serverWorld) {
-				BlockPos immutablePos = pos.toImmutable();
-				String dimensionKey = world.getRegistryKey().getValue().toString();
+		this.context.execute((world, pos) -> {
+			if (world instanceof ServerLevel serverWorld) {
+				BlockPos immutablePos = pos;
+				String dimensionKey = world.dimension().identifier().toString();
 				// 记录当前打开的工作台坐标：① 单机直写 tracker（服务端线程写、渲染线程读，volatile）；
 				// ② 经 S2C 包发给开桌玩家（联机下客户端的唯一来源；单机下与直写幂等重复）。
 				// 与 keep 开关无关：GUI 打开时渲染器需要此坐标定位实时预览；维度一并记录，
 				// 供关闭时按维度写存储缓存（客户端拿不到 world 对象）。
 				OpenTableTracker.set(immutablePos, dimensionKey);
-				if (playerInventory.player instanceof ServerPlayerEntity serverPlayer) {
+				if (playerInventory.player instanceof ServerPlayer serverPlayer) {
 					CraftingPreviewNetworking.sendOpen(serverPlayer, immutablePos, dimensionKey);
 					// 联机共享朝向：以「最后实际操作者」为基准（onContentChanged 时更新）。
 					// 开桌（点击）方向更新规则：
@@ -128,9 +128,9 @@ public abstract class CraftingScreenHandlerMixin {
 					//    但把当前方向广播给新打开者（含本人），让它立即转向上一个操作者。
 					UUID currentOp = TableFacing.getOperator(immutablePos);
 					int sector = TableFacing.computeSector(serverPlayer.getX(), serverPlayer.getZ(), immutablePos);
-					if (currentOp == null || currentOp.equals(serverPlayer.getUuid())) {
-						TableFacing.setFacing(immutablePos, sector, serverPlayer.getUuid());
-						CraftingPreviewNetworking.broadcastFacing(serverWorld, immutablePos, sector, serverPlayer.getUuid());
+					if (currentOp == null || currentOp.equals(serverPlayer.getUUID())) {
+						TableFacing.setFacing(immutablePos, sector, serverPlayer.getUUID());
+						CraftingPreviewNetworking.broadcastFacing(serverWorld, immutablePos, sector, serverPlayer.getUUID());
 					} else {
 						int currentSector = TableFacing.get(immutablePos);
 						if (currentSector != TableFacing.UNKNOWN) {
@@ -139,7 +139,7 @@ public abstract class CraftingScreenHandlerMixin {
 						}
 					}
 					// 登记打开者（共享网格：每人一条）。
-					OpenTables.add(immutablePos, serverPlayer.getUuid());
+					OpenTables.add(immutablePos, serverPlayer.getUUID());
 				}
 				// 同步该位置权威内容进自己的网格（共享合成网格：所有人看到同一份）。
 				// 无论 keep 开关：打开时网格显示该位置当前内容（保持实时同步语义）。
@@ -150,26 +150,26 @@ public abstract class CraftingScreenHandlerMixin {
 				try {
 					CraftingGridStorage.GridData stored = CraftingGridStorage.peek(serverWorld, pos);
 					if (stored != null) {
-						List<Slot> slots = this.getInputSlots();
+						List<Slot> slots = this.getInputGridSlots();
 						List<ItemStack> inputs = stored.inputs();
 						// 恢复进槽前规范化附魔条目：按 key 重解引用为注册表规范实例（值对象与注册表
 						// 一致），避免原版 container_set_content 编码时因「外来值对象」查不到 raw id 断线
 						// （Can't find id for Reference{...}）。规范化的副本替换原缓存数据进槽。
-						net.minecraft.registry.Registry<net.minecraft.enchantment.Enchantment> reg =
-								serverWorld.getServer().getRegistryManager()
-										.getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+						net.minecraft.core.Registry<net.minecraft.world.item.enchantment.Enchantment> reg =
+								serverWorld.getServer().registryAccess()
+										.lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT);
 						for (int i = 0; i < slots.size() && i < inputs.size() && i < GRID_SIZE; i++) {
 							ItemStack stack = inputs.get(i);
 							if (stack == null || stack.isEmpty()) {
-								slots.get(i).setStack(ItemStack.EMPTY);
+								slots.get(i).set(ItemStack.EMPTY);
 								continue;
 							}
-							slots.get(i).setStack(CraftingGridStorage.canonicalizeEnchantments(reg, stack));
+							slots.get(i).set(CraftingGridStorage.canonicalizeEnchantments(reg, stack));
 						}
 						// 结果槽：客户端镜像不自己重算，服务端打开时直接写权威结果（共享显示）。
-						CraftingScreenHandler self = (CraftingScreenHandler) (Object) this;
+						CraftingMenu self = (CraftingMenu) (Object) this;
 						ItemStack storedResult = stored.result();
-						self.getSlot(0).setStack(storedResult != null
+						self.getSlot(0).set(storedResult != null
 								? CraftingGridStorage.canonicalizeEnchantments(reg, storedResult) : ItemStack.EMPTY);
 					}
 				} finally {
@@ -189,15 +189,15 @@ public abstract class CraftingScreenHandlerMixin {
 	@Inject(method = "onContentChanged", at = @At("TAIL"))
 	private void templateMod$syncLiveGrid(Inventory inventory, CallbackInfo ci) {
 		// 仅原版合成台：子类菜单（VisualWorkbench 等）有自己的可视化与存储，不接管。
-		if (((Object) this).getClass() != CraftingScreenHandler.class) {
+		if (((Object) this).getClass() != CraftingMenu.class) {
 			return;
 		}
 		// 共享写回重入：本方法由「写回他人槽位」触发时跳过（对方并非实际操作者）。
 		if (sharingSync) {
 			return;
 		}
-		this.context.run((world, pos) -> {
-			if (!(world instanceof ServerWorld serverWorld)) return;
+		this.context.execute((world, pos) -> {
+			if (!(world instanceof ServerLevel serverWorld)) return;
 			templateMod$storeAndSync(serverWorld, pos);
 		});
 	}
@@ -209,13 +209,13 @@ public abstract class CraftingScreenHandlerMixin {
 	 * <code>onInputSlotFillFinish</code>（filling 已清、结果槽已被 updateResult 填入）之后，
 	 * 补一次权威存储/写回/广播 —— 否则对方客户端只见材料不见结果
 	 * （手动对网格操作一下 = 触发一次 filling=false 的 onContentChanged 才把结果带上存储）。
-	 * 仅服务端（ServerWorld 参数由 vanilla 传入）执行，客户端镜像此方法不走 context 无副作用。
+	 * 仅服务端（ServerLevel 参数由 vanilla 传入）执行，客户端镜像此方法不走 context 无副作用。
 	 */
 	@Inject(method = "onInputSlotFillFinish", at = @At("TAIL"))
-	private void templateMod$syncOnInputSlotFillFinish(ServerWorld serverWorld,
-			net.minecraft.recipe.RecipeEntry<net.minecraft.recipe.CraftingRecipe> recipe, CallbackInfo ci) {
-		this.context.run((world, pos) -> {
-			if (!(world instanceof ServerWorld sw)) return;
+	private void templateMod$syncOnInputSlotFillFinish(ServerLevel serverWorld,
+			net.minecraft.world.item.crafting.RecipeHolder<net.minecraft.world.item.crafting.CraftingRecipe> recipe, CallbackInfo ci) {
+		this.context.execute((world, pos) -> {
+			if (!(world instanceof ServerLevel sw)) return;
 			templateMod$storeAndSync(sw, pos);
 		});
 	}
@@ -225,13 +225,13 @@ public abstract class CraftingScreenHandlerMixin {
 	 * 供 onContentChanged（实时编辑）与 onInputSlotFillFinish（配方书补结果）共用。
 	 */
 	@Unique
-	private void templateMod$storeAndSync(ServerWorld serverWorld, BlockPos pos) {
-		BlockPos immutablePos = pos.toImmutable();
-		List<Slot> slots = this.getInputSlots();
+	private void templateMod$storeAndSync(ServerLevel serverWorld, BlockPos pos) {
+		BlockPos immutablePos = pos;
+		List<Slot> slots = this.getInputGridSlots();
 		List<ItemStack> grid = new ArrayList<>(GRID_SIZE);
-		for (int i = 0; i < GRID_SIZE; i++) grid.add(i < slots.size() ? slots.get(i).getStack() : ItemStack.EMPTY);
-		CraftingScreenHandler self = (CraftingScreenHandler) (Object) this;
-		ItemStack result = self.getSlot(0).getStack();
+		for (int i = 0; i < GRID_SIZE; i++) grid.add(i < slots.size() ? slots.get(i).getItem() : ItemStack.EMPTY);
+		CraftingMenu self = (CraftingMenu) (Object) this;
+		ItemStack result = self.getSlot(0).getItem();
 		// 残渣修复：网格已全空（材料撤光）时配方必然无效，结果槽可能仍残留旧值
 		// （vanilla 清空结果槽与 onContentChanged 存在时序差，store 可能读到过期结果）。
 		// 此时强制结果为 EMPTY，避免存储残留旧结果——否则退出 GUI 后保留分支会用它
@@ -243,7 +243,7 @@ public abstract class CraftingScreenHandlerMixin {
 			long nonEmpty = grid.stream().filter(s -> s != null && !s.isEmpty()).count();
 			String resultName = result.isEmpty() ? "<empty>" : result.getItem().toString();
 			TemplateMod.LOGGER.warn("[DIAG-recipe] t={} 存储 gridNonEmpty={} nonEmptySlots={} resultEmpty={} result={}",
-					this.player.getUuid(), nonEmpty > 0, nonEmpty, result.isEmpty(), resultName);
+					this.player.getUUID(), nonEmpty > 0, nonEmpty, result.isEmpty(), resultName);
 		}
 		// ① 权威内容：仅更新内存缓存（不落盘，见 CraftingGridStorage.storeMemory——
 		// 每次编辑落盘会造成服务端主线程磁盘 IO 抖动；落盘交给关桌/破坏/服务器停止）。
@@ -254,16 +254,16 @@ public abstract class CraftingScreenHandlerMixin {
 		sharingSync = true;
 		try {
 			for (UUID openerUuid : OpenTables.getPlayers(immutablePos)) {
-				if (openerUuid.equals(this.player.getUuid())) {
+				if (openerUuid.equals(this.player.getUUID())) {
 					continue;
 				}
-				ServerPlayerEntity opener = serverWorld.getServer().getPlayerManager().getPlayer(openerUuid);
+				ServerPlayer opener = serverWorld.getServer().getPlayerList().getPlayer(openerUuid);
 				if (opener == null) {
 					continue;
 				}
-				net.minecraft.screen.ScreenHandler sh = opener.currentScreenHandler;
-				if (!(sh instanceof CraftingScreenHandler other)
-						|| other == (CraftingScreenHandler) (Object) this) {
+				net.minecraft.world.inventory.AbstractContainerMenu sh = opener.containerMenu;
+				if (!(sh instanceof CraftingMenu other)
+						|| other == (CraftingMenu) (Object) this) {
 					continue;
 				}
 				syncSlotsTo(other, grid, result, serverWorld);
@@ -277,43 +277,43 @@ public abstract class CraftingScreenHandlerMixin {
 		// ④ 「最后实际操作者」朝向：网格内容变化 = 实际操作。覆盖开桌基准并广播，
 		// 让所有客户端（含编辑者本人）的预览朝向转向当前正在编辑的玩家；
 		// B 空手点开不做内容变化，不会抢走方向（仍跟随 A）。
-		if (this.player instanceof ServerPlayerEntity operator) {
+		if (this.player instanceof ServerPlayer operator) {
 			int sector = TableFacing.computeSector(operator.getX(), operator.getZ(), immutablePos);
-			TableFacing.setFacing(immutablePos, sector, operator.getUuid());
-			CraftingPreviewNetworking.broadcastFacing(serverWorld, immutablePos, sector, operator.getUuid());
+			TableFacing.setFacing(immutablePos, sector, operator.getUUID());
+			CraftingPreviewNetworking.broadcastFacing(serverWorld, immutablePos, sector, operator.getUUID());
 		}
 	}
 
 	/** 把权威网格/结果同步进另一个打开的 handler（diff 幂等；规范化附魔防断线）。 */
-	private static void syncSlotsTo(CraftingScreenHandler other, List<ItemStack> grid,
-			ItemStack result, ServerWorld serverWorld) {
-		net.minecraft.registry.Registry<net.minecraft.enchantment.Enchantment> reg =
-				serverWorld.getServer().getRegistryManager()
-						.getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-		List<Slot> slots = other.getInputSlots();
+	private static void syncSlotsTo(CraftingMenu other, List<ItemStack> grid,
+			ItemStack result, ServerLevel serverWorld) {
+		net.minecraft.core.Registry<net.minecraft.world.item.enchantment.Enchantment> reg =
+				serverWorld.getServer().registryAccess()
+						.lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT);
+		List<Slot> slots = other.getInputGridSlots();
 		for (int i = 0; i < slots.size() && i < GRID_SIZE; i++) {
 			ItemStack target = i < grid.size() ? grid.get(i) : ItemStack.EMPTY;
 			if (target == null) {
 				target = ItemStack.EMPTY;
 			}
-			if (!ItemStack.areEqual(slots.get(i).getStack(), target)) {
-				slots.get(i).setStack(target.isEmpty()
+			if (!ItemStack.matches(slots.get(i).getItem(), target)) {
+				slots.get(i).set(target.isEmpty()
 						? ItemStack.EMPTY : CraftingGridStorage.canonicalizeEnchantments(reg, target.copy()));
 			}
 		}
 		Slot resultSlot = other.getSlot(0);
 		ItemStack targetResult = result != null ? result : ItemStack.EMPTY;
-		if (!ItemStack.areEqual(resultSlot.getStack(), targetResult)) {
-			resultSlot.setStack(targetResult.isEmpty()
+		if (!ItemStack.matches(resultSlot.getItem(), targetResult)) {
+			resultSlot.set(targetResult.isEmpty()
 					? ItemStack.EMPTY : CraftingGridStorage.canonicalizeEnchantments(reg, targetResult.copy()));
 		}
 	}
 
 
 	/**
-	 * 关闭工作台时在 vanilla 的 {@code context.run(... dropInventory ...)} 之前拦截。
+	 * 关闭工作台时在 vanilla 的 {@code context.execute(... dropInventory ...)} 之前拦截。
 	 *
-	 * <p>关闭是双向调用：客户端镜像（{@code closeScreenHandler}）与服务端（收到关闭数据包）
+	 * <p>关闭是双向调用：客户端镜像（{@code closeAbstractContainerMenu}）与服务端（收到关闭数据包）
 	 * 都会执行 {@code onClosed}。客户端镜像的 {@code context} 为 EMPTY、跑不了
 	 * {@code context.run}；服务端在真实 {@code context.run} 里执行最终语义。
 	 *
@@ -329,42 +329,42 @@ public abstract class CraftingScreenHandlerMixin {
 	 * </ul>
 	 */
 	@Inject(method = "onClosed",
-			at = @At(value = "INVOKE", target = "Lnet/minecraft/screen/ScreenHandlerContext;run(Ljava/util/function/BiConsumer;)V"),
+			at = @At(value = "INVOKE", target = "Lnet/minecraft/screen/ContainerLevelAccess;run(Ljava/util/function/BiConsumer;)V"),
 			cancellable = true)
-	private void templateMod$keepGridOnClose(PlayerEntity player, CallbackInfo ci) {
+	private void templateMod$keepGridOnClose(Player player, CallbackInfo ci) {
 		// 仅原版合成台：子类菜单（VisualWorkbench 等）走自己的关桌逻辑（方块实体存档），
 		// 不拦截、不取消、不写本 mod 的存储，避免干扰其自身的物品归还/保存。
-		if (((Object) this).getClass() != CraftingScreenHandler.class) {
+		if (((Object) this).getClass() != CraftingMenu.class) {
 			return;
 		}
-		// 关闭界面即清空 tracker（与 keep 开关无关）：客户端镜像 closeScreenHandler 与服务端关闭
+		// 关闭界面即清空 tracker（与 keep 开关无关）：客户端镜像 closeAbstractContainerMenu 与服务端关闭
 		// 都会调用 onClosed，任一侧先执行都会清掉，避免残留坐标在无 GUI 时被误用（渲染器仅在
 		// CraftingScreen 打开时读取 tracker，且会校验该位置仍是工作台）。
 		OpenTableTracker.clear();
 		// keep 判定改用「关闭者本人的偏好」（客户端经 C2S 上报，PlayerKeepPrefs 记录），
 		// 而非服务端全局配置——修复「房主关掉 keep 后其他玩家（keep 开启）关桌不保留」。
-		boolean keep = PlayerKeepPrefs.getOrDefault(player.getUuid());
+		boolean keep = PlayerKeepPrefs.getOrDefault(player.getUUID());
 
-		List<Slot> slots = this.getInputSlots();
+		List<Slot> slots = this.getInputGridSlots();
 		List<ItemStack> grid = new ArrayList<>(GRID_SIZE);
 		for (int i = 0; i < slots.size() && i < GRID_SIZE; i++) {
-			grid.add(slots.get(i).getStack());
+			grid.add(slots.get(i).getItem());
 		}
-		CraftingScreenHandler self = (CraftingScreenHandler) (Object) this;
-		ItemStack result = self.getSlot(0).getStack();
+		CraftingMenu self = (CraftingMenu) (Object) this;
+		ItemStack result = self.getSlot(0).getItem();
 
 		final List<Slot> finalSlots = slots;
 		final List<ItemStack> finalGrid = grid;
 		final ItemStack finalResult = result;
 		final boolean finalKeep = keep;
-		this.context.run((world, pos) -> {
-			if (world instanceof ServerWorld serverWorld) {
-				BlockPos immutablePos = pos.toImmutable();
-				String dimensionKey = world.getRegistryKey().getValue().toString();
-				boolean hasOthers = OpenTables.hasOtherOpeners(immutablePos, player.getUuid());
-				OpenTables.remove(immutablePos, player.getUuid());
+		this.context.execute((world, pos) -> {
+			if (world instanceof ServerLevel serverWorld) {
+				BlockPos immutablePos = pos;
+				String dimensionKey = world.dimension().identifier().toString();
+				boolean hasOthers = OpenTables.hasOtherOpeners(immutablePos, player.getUUID());
+				OpenTables.remove(immutablePos, player.getUUID());
 				// 清空槽位/归还都不得触发 syncLiveGrid：
-				// slot.setStack(EMPTY) 会触发 onContentChanged → 本方法 TAIL inject →
+				// slot.set(EMPTY) 会触发 onContentChanged → 本方法 TAIL inject →
 				// store(空网格) 覆盖权威 + 广播空 + 写回他人槽位，把共享内容清空（实测 bug）。
 				sharingSync = true;
 				try {
@@ -372,9 +372,9 @@ public abstract class CraftingScreenHandlerMixin {
 						// 共享中：取消 vanilla 归还（防复制），只清空自己的镜像槽；不动权威、不广播。
 						ci.cancel();
 						for (Slot slot : finalSlots) {
-							slot.setStack(ItemStack.EMPTY);
+							slot.set(ItemStack.EMPTY);
 						}
-						self.getSlot(0).setStack(ItemStack.EMPTY);
+						self.getSlot(0).set(ItemStack.EMPTY);
 						return;
 					}
 					// 最后一名打开者：走 keep 语义。
@@ -382,9 +382,9 @@ public abstract class CraftingScreenHandlerMixin {
 						ci.cancel();
 						CraftingGridStorage.store(serverWorld, pos, finalGrid, finalResult);
 						for (Slot slot : finalSlots) {
-							slot.setStack(ItemStack.EMPTY);
+							slot.set(ItemStack.EMPTY);
 						}
-						self.getSlot(0).setStack(ItemStack.EMPTY);
+						self.getSlot(0).set(ItemStack.EMPTY);
 						CraftingPreviewNetworking.broadcastStored(serverWorld, immutablePos, dimensionKey,
 								finalGrid, finalResult);
 					} else {

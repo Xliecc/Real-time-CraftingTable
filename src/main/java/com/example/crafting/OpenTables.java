@@ -1,6 +1,6 @@
 package com.example.crafting;
 
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
 
 import java.util.HashSet;
 import java.util.Map;
@@ -33,7 +33,7 @@ public final class OpenTables {
 
 	/** 打开时登记该玩家（幂等；多人共享同一工作台时每人各占一条）。 */
 	public static void add(BlockPos pos, UUID player) {
-		OPEN.computeIfAbsent(pos.toImmutable(), k -> ConcurrentHashMap.newKeySet()).add(player);
+		OPEN.computeIfAbsent(pos, k -> ConcurrentHashMap.newKeySet()).add(player);
 	}
 
 	/** 关闭时移除该玩家登记；若移除后该位置无人打开则整条删除。 */
@@ -50,13 +50,13 @@ public final class OpenTables {
 
 	/** 该位置当前打开者集合（快照，可能为空集）。 */
 	public static Set<UUID> getPlayers(BlockPos pos) {
-		Set<UUID> set = OPEN.get(pos.toImmutable());
+		Set<UUID> set = OPEN.get(pos);
 		return set == null ? Set.of() : new HashSet<>(set);
 	}
 
 	/** 该位置当前是否有<b>其他</b>打开者（排除 {@code player}）。 */
 	public static boolean hasOtherOpeners(BlockPos pos, UUID player) {
-		Set<UUID> set = OPEN.get(pos.toImmutable());
+		Set<UUID> set = OPEN.get(pos);
 		if (set == null) {
 			return false;
 		}

@@ -2,10 +2,9 @@ package com.example.network;
 
 import com.example.TemplateMod;
 
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.util.Identifier;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 /**
  * 客户端 → 服务端：告知本玩家的「关闭工作台后保留材料」偏好（客户端自身配置）。
@@ -19,27 +18,19 @@ import net.minecraft.util.Identifier;
  * {@link com.example.crafting.PlayerKeepPrefs}），关桌拦截时用「关闭者本人的偏好」判定，
  * 而非服务端全局配置。客户端在加入时与每次打开工作台时发送（保持最新）。
  */
-public record KeepPreferenceC2SPacket(boolean keepItemsWhenClosed) implements CustomPayload {
+public record KeepPreferenceC2SPacket(boolean keepItemsWhenClosed) implements CustomPacketPayload {
 
-	public static final CustomPayload.Id<KeepPreferenceC2SPacket> ID =
-			new CustomPayload.Id<>(Identifier.of(TemplateMod.MOD_ID, "keep_preference"));
+	public static final CustomPacketPayload.Type<KeepPreferenceC2SPacket> TYPE =
+			CustomPacketPayload.createType(TemplateMod.MOD_ID + ":keep_preference");
 
 	/** 手写编解码（单布尔）。 */
-	public static final PacketCodec<RegistryByteBuf, KeepPreferenceC2SPacket> CODEC =
-			new PacketCodec<>() {
-				@Override
-				public void encode(RegistryByteBuf buf, KeepPreferenceC2SPacket pkt) {
-					buf.writeBoolean(pkt.keepItemsWhenClosed);
-				}
-
-				@Override
-				public KeepPreferenceC2SPacket decode(RegistryByteBuf buf) {
-					return new KeepPreferenceC2SPacket(buf.readBoolean());
-				}
-			};
+	public static final StreamCodec<RegistryFriendlyByteBuf, KeepPreferenceC2SPacket> STREAM_CODEC =
+			StreamCodec.of(
+					(buf, pkt) -> buf.writeBoolean(pkt.keepItemsWhenClosed),
+					buf -> new KeepPreferenceC2SPacket(buf.readBoolean()));
 
 	@Override
-	public CustomPayload.Id<? extends CustomPayload> getId() {
-		return ID;
+	public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+		return TYPE;
 	}
 }

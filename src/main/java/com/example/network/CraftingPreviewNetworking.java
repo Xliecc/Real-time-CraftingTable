@@ -7,11 +7,11 @@ import com.mojang.serialization.JsonOps;
 import net.fabricmc.fabric.api.networking.v1.PlayerLookup;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.RegistryOps;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.BlockPos;
 
 import java.util.List;
 import java.util.UUID;
@@ -32,7 +32,7 @@ public final class CraftingPreviewNetworking {
 	 * 把「刚打开的工作台坐标」发给开桌玩家本人（客户端收到后写入 OpenTableTracker，
 	 * 供渲染器定位实时 GUI 预览）。应与原版 OpenScreen 包相邻送达。
 	 */
-	public static void sendOpen(ServerPlayerEntity player, BlockPos pos, String dimensionKey) {
+	public static void sendOpen(ServerPlayer player, BlockPos pos, String dimensionKey) {
 		ServerPlayNetworking.send(player, new CraftingTableOpenS2CPacket(pos, dimensionKey));
 	}
 
@@ -45,12 +45,12 @@ public final class CraftingPreviewNetworking {
 	 * 等替换/包装附魔注册表的整合包环境，避免 PACKET_CODEC 编码附魔时
 	 * 「Can't find id for Reference」断线）。
 	 */
-	public static void broadcastStored(ServerWorld world, BlockPos pos, String dimensionKey,
+	public static void broadcastStored(ServerLevel world, BlockPos pos, String dimensionKey,
 			List<ItemStack> inputs, ItemStack result) {
-		RegistryOps<JsonElement> ops = RegistryOps.of(JsonOps.INSTANCE, world.getRegistryManager());
+		RegistryOps<JsonElement> ops = RegistryOps.create(JsonOps.INSTANCE, world.registryAccess());
 		CraftingGridStoredS2CPacket payload = CraftingGridStoredS2CPacket.fromGridData(
-				ops, pos.toImmutable(), dimensionKey, inputs, result);
-		for (ServerPlayerEntity watcher : PlayerLookup.tracking(world, pos)) {
+				ops, pos, dimensionKey, inputs, result);
+		for (ServerPlayer watcher : PlayerLookup.tracking(world, pos)) {
 			ServerPlayNetworking.send(watcher, payload);
 		}
 	}
@@ -60,10 +60,10 @@ public final class CraftingPreviewNetworking {
 	 * 所有玩家（含开桌者本人）。客户端据此把预览面板朝向「上一个操作工作台的人」；
 	 * FOLLOW 档再用 UUID 在本地找操作者实体做客户端本地实时跟随。
 	 */
-	public static void broadcastFacing(ServerWorld world, BlockPos pos, int sector, UUID operatorUuid) {
+	public static void broadcastFacing(ServerLevel world, BlockPos pos, int sector, UUID operatorUuid) {
 		CraftingTableFacingS2CPacket payload =
-				new CraftingTableFacingS2CPacket(pos.toImmutable(), sector, operatorUuid);
-		for (ServerPlayerEntity watcher : PlayerLookup.tracking(world, pos)) {
+				new CraftingTableFacingS2CPacket(pos, sector, operatorUuid);
+		for (ServerPlayer watcher : PlayerLookup.tracking(world, pos)) {
 			ServerPlayNetworking.send(watcher, payload);
 		}
 	}

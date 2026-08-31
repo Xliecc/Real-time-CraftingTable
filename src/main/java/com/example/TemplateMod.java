@@ -20,10 +20,10 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
-import net.minecraft.registry.RegistryOps;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.resources.Identifier;
+import net.minecraft.core.BlockPos;
 
 import org.slf4j.Logger;
 
@@ -45,21 +45,21 @@ public class TemplateMod implements ModInitializer {
 		// 联机支持（S2C 通道注册，双端都必须在初始化期完成）：
 		// ① 开桌坐标包：服务端 → 开桌玩家（客户端写入 OpenTableTracker 定位实时 GUI 预览）；
 		// ② 保留记录包：服务端 → 追踪区块的玩家（关闭后保留预览的跨客户端同步）。
-		PayloadTypeRegistry.playS2C().register(CraftingTableOpenS2CPacket.ID, CraftingTableOpenS2CPacket.CODEC);
-		PayloadTypeRegistry.playS2C().register(CraftingGridStoredS2CPacket.ID, CraftingGridStoredS2CPacket.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(CraftingTableOpenS2CPacket.TYPE, CraftingTableOpenS2CPacket.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(CraftingGridStoredS2CPacket.TYPE, CraftingGridStoredS2CPacket.STREAM_CODEC);
 		// ③ 工作台朝向包：服务端 → 追踪区块的玩家（目标工作台的「最后操作者方位」扇区，
 		//    使所有客户端渲染该工作台预览时都朝向最后一个操作它的人）。单机直写幂等重复。
-		PayloadTypeRegistry.playS2C().register(CraftingTableFacingS2CPacket.ID, CraftingTableFacingS2CPacket.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(CraftingTableFacingS2CPacket.TYPE, CraftingTableFacingS2CPacket.STREAM_CODEC);
 		// ④ keep 偏好包（C2S）：客户端上报自己的「关闭后保留材料」偏好 → 服务端按玩家 UUID
 		//    记录（PlayerKeepPrefs），关桌拦截用关闭者本人的偏好判定，而非服务端全局配置。
-		PayloadTypeRegistry.playC2S().register(KeepPreferenceC2SPacket.ID, KeepPreferenceC2SPacket.CODEC);
-		ServerPlayNetworking.registerGlobalReceiver(KeepPreferenceC2SPacket.ID,
+		PayloadTypeRegistry.serverboundPlay().register(KeepPreferenceC2SPacket.TYPE, KeepPreferenceC2SPacket.STREAM_CODEC);
+		ServerPlayNetworking.registerGlobalReceiver(KeepPreferenceC2SPacket.TYPE,
 				(payload, context) -> {
-					PlayerKeepPrefs.set(context.player().getUuid(), payload.keepItemsWhenClosed());
+					PlayerKeepPrefs.set(context.player().getUUID(), payload.keepItemsWhenClosed());
 				});
 		// 玩家离开时清除其 keep 偏好，防 UUID → 记录长期堆积。
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
-				PlayerKeepPrefs.remove(handler.getPlayer().getUuid()));
+				PlayerKeepPrefs.remove(handler.getPlayer().getUUID()));
 
 		// 玩家加入时的初始同步：把存储里全部非空保留记录（跨维度）逐条补发给新客户端，
 		// 使其能直接渲染已有的「关闭后保留预览」（关桌/广播只发生在事件时刻，加入者会错过）。
@@ -68,11 +68,11 @@ public class TemplateMod implements ModInitializer {
 		// 记录自带维度键，客户端按当前维度过滤渲染；单机（集成服务器）下宿主收到的是
 		// 同一 JVM 缓存里已有数据的幂等副本，无害。
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-			ServerPlayerEntity player = handler.getPlayer();
+			ServerPlayer player = handler.getPlayer();
 			RegistryOps<JsonElement> ops =
-					RegistryOps.of(JsonOps.INSTANCE, server.getRegistryManager());
+					RegistryOps.create(JsonOps.INSTANCE, server.registryAccess());
 			for (CraftingGridStorage.SyncEntry entry
-					: CraftingGridStorage.peekAllForSync(server.getRegistryManager())) {
+					: CraftingGridStorage.peekAllForSync(server.registryAccess())) {
 				ServerPlayNetworking.send(player, CraftingGridStoredS2CPacket.fromGridData(
 						ops, entry.pos(), entry.dimensionKey(),
 						entry.data().inputs(), entry.data().result()));
@@ -87,25 +87,25 @@ public class TemplateMod implements ModInitializer {
 		});
 
 		// 工作台方块被破坏/替换时掉落保留材料 + 清记录：统一由 common mixin
-		// CraftingTableBreakMixin（AbstractBlock.onStateReplaced）处理——与箱子同源，覆盖
+		// CraftingTableBreakMixin（BlockBehaviour.onStateReplaced）处理——与箱子同源，覆盖
 		// 玩家挖、爆炸、活塞、流体、火焰等一切方式，且避免 PlayerBlockBreakEvents 双份掉落。
 		LOGGER.info("Crafting preview mod initialized (multiplayer-ready).");
 
 		// 服务器正常停止时把内存缓存落盘（性能优化 P0-1：编辑过程只写内存，见
 		// CraftingGridStorage.storeMemory；若不在停止时兜底落盘，最近编辑会在重启后丢失）。
 		ServerLifecycleEvents.SERVER_STOPPING.register(server ->
-				CraftingGridStorage.persist(server.getOverworld()));
+				CraftingGridStorage.persist(server.overworld()));
 
 		// 广播合并（性能优化 P0-2）：tick 末尾统一 flush 本 tick 内所有内容变化的广播
 		// （同一位置多次编辑只发一次，见 GridBroadcastScheduler）。
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
-			for (net.minecraft.server.world.ServerWorld world : server.getWorlds()) {
+			for (net.minecraft.server.level.ServerLevel world : server.getAllLevels()) {
 				GridBroadcastScheduler.flush(world);
 			}
 		});
 	}
 
 	public static Identifier id(String path) {
-		return Identifier.of(MOD_ID, path);
+		return Identifier.fromNamespaceAndPath(MOD_ID, path);
 	}
 }

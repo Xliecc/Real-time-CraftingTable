@@ -2,8 +2,8 @@ package com.example.network;
 
 import com.example.crafting.CraftingGridStorage;
 
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.BlockPos;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -25,27 +25,27 @@ import java.util.Set;
  * </ul>
  *
  * <p>线程约定：仅在服务端主线程访问（syncLiveGrid / END_SERVER_TICK），无需同步。
- * 维度世界对象在服务端常驻（MC 服务端所有维度同时加载），按 ServerWorld 分组安全。
+ * 维度世界对象在服务端常驻（MC 服务端所有维度同时加载），按 ServerLevel 分组安全。
  */
 public final class GridBroadcastScheduler {
 
-	private static final Map<ServerWorld, Set<BlockPos>> DIRTY = new HashMap<>();
+	private static final Map<ServerLevel, Set<BlockPos>> DIRTY = new HashMap<>();
 
 	private GridBroadcastScheduler() {
 	}
 
 	/** 登记某位置内容已变化（同一 tick 内重复登记自动去重）。 */
-	public static void mark(ServerWorld world, BlockPos pos) {
-		DIRTY.computeIfAbsent(world, k -> new HashSet<>()).add(pos.toImmutable());
+	public static void mark(ServerLevel world, BlockPos pos) {
+		DIRTY.computeIfAbsent(world, k -> new HashSet<>()).add(pos);
 	}
 
 	/** tick 末尾：把本 tick 内所有 dirty 位置的最新权威内容各广播一次，然后清空。 */
-	public static void flush(ServerWorld world) {
+	public static void flush(ServerLevel world) {
 		Set<BlockPos> dirty = DIRTY.remove(world);
 		if (dirty == null || dirty.isEmpty()) {
 			return;
 		}
-		String dimensionKey = world.getRegistryKey().getValue().toString();
+		String dimensionKey = world.dimension().identifier().toString();
 		for (BlockPos pos : dirty) {
 			CraftingGridStorage.GridData data = CraftingGridStorage.peek(world, pos);
 			if (data == null) {

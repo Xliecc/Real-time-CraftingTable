@@ -34,7 +34,8 @@ import java.util.List;
 @Mixin(Level.class)
 public abstract class CraftingTableBreakMixin {
 
-	@Inject(method = "setBlock", at = @At("HEAD"))
+	@Inject(method = "setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;II)Z",
+			at = @At("HEAD"))
 	private void templateMod$dropKeptItemsOnBreak(BlockPos pos, BlockState state, int flags, int maxDepth,
 			CallbackInfoReturnable<Boolean> cir) {
 		if (!(((Level) (Object) this) instanceof ServerLevel serverWorld)) {

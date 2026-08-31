@@ -36,11 +36,12 @@ loom {
 	}
 }
 
-// 产物 jar 的显示名字（仅影响 build/libs 里的文件名，与 mod id 无关——mod id 仍由
-// fabric.mod.json / rootProject.name 决定，保持小写连字符 real-time-crafting-table）。
+// 产物 jar 文件名：real-time-crafting-table-<version>+mc<MC版本>.jar
+// 例如：real-time-crafting-table-1.0.0+mc1.21.11.jar（与 26.2 版区分）
 base {
-	archivesName = "Real-time CraftingTable"
+	archivesName = "real-time-crafting-table"
 }
+version = "${project.version}+mc${project.minecraft_version}"
 
 dependencies {
 	// To change the versions see the gradle.properties file

@@ -6,26 +6,26 @@ import com.example.crafting.CraftingGridStorage;
 import com.example.crafting.OpenTableTracker;
 import com.example.crafting.TableFacing;
 
-import net.minecraft.block.Blocks;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.ingame.CraftingScreen;
-import net.minecraft.client.render.LightmapTextureManager;
-import net.minecraft.client.render.OverlayTexture;
-import net.minecraft.client.render.block.entity.state.BlockEntityRenderState;
-import net.minecraft.client.render.command.OrderedRenderCommandQueue;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.ItemDisplayContext;
-import net.minecraft.client.render.item.ItemRenderState;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.Entity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.CraftingScreenHandler;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.RotationAxis;
-import net.minecraft.world.LightType;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.CraftingScreen;
+import net.minecraft.util.LightCoordsUtil;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemDisplayContext;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.CraftingMenu;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.util.Mth;
+import com.mojang.math.Axis;
+import net.minecraft.world.level.LightLayer;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,7 +44,7 @@ import java.util.WeakHashMap;
  *   <li>保留数据（配置「关闭工作台时保留合成材料」开启时）：遍历当前维度所有非空保留记录，
  *       <b>始终渲染</b>——不依赖玩家视线，看向与否都显示（见 {@link CraftingGridStorage#peekAll}）；</li>
  *   <li>实时 GUI：{@link CraftingScreen}（3×3 工作台界面）打开时，无论保留开关与否，都在
- *       正在使用的工作台上方渲染 {@link CraftingScreenHandler} 实时槽位（slot 1~9 输入、slot 0 结果）；</li>
+ *       正在使用的工作台上方渲染 {@link CraftingMenu} 实时槽位（slot 1~9 输入、slot 0 结果）；</li>
  *   <li>在工作台上方以 3D 形式渲染每个合成材料（悬浮于对应格子位置），
  *       若结果非空，则在合成区上方中央渲染最终结果，并绕竖直轴缓慢旋转。</li>
  *   <li>面板朝向两档语义（互斥）：
@@ -56,12 +56,12 @@ import java.util.WeakHashMap;
  * </ol>
  *
  * <p>物品渲染采用 Minecraft 1.21.11 的 ItemModel 系统：
- * {@link ItemModelManager#updateForNonLivingEntity} 根据物品栈构建 {@link ItemRenderState}，
- * 再通过 {@link ItemRenderState#render} 提交到世界渲染的命令队列（{@link OrderedRenderCommandQueue}）。
+ * {@link ItemModelManager#updateForNonLiving} 根据物品栈构建 {@link ItemStackRenderState}，
+ * 再通过 {@link ItemStackRenderState#render} 提交到世界渲染的命令队列（{@link SubmitNodeCollector}）。
  */
 public final class CraftingPreviewRenderer {
 
-	/** CraftingScreenHandler 槽位布局：槽 0 为合成结果，槽 1~9 为 3×3 合成网格。 */
+	/** CraftingMenu 槽位布局：槽 0 为合成结果，槽 1~9 为 3×3 合成网格。 */
 	private static final int RESULT_SLOT = 0;
 	private static final int GRID_START_SLOT = 1;
 	private static final int GRID_SLOT_COUNT = 9;
@@ -130,7 +130,7 @@ public final class CraftingPreviewRenderer {
 		float currentDeg;
 		/** 当前目标扇形（0/1/2/3 对应 0/90/180/270°）。 */
 		int sector = -1;
-		/** 动画起始游戏刻（须与 {@code renderPreview} 的 {@code time} = {@code world.getTime()} 单调时钟同一时钟，
+		/** 动画起始游戏刻（须与 {@code renderPreview} 的 {@code time} = {@code world.getOverworldClockTime()} 单调时钟同一时钟，
 		 * 否则 (time + tickDelta) 相减基线错乱；06:44 起赋值改自 {@code time}）。 */
 		long animStartTick;
 		/** 动画起始角（度）。 */
@@ -171,7 +171,7 @@ public final class CraftingPreviewRenderer {
 	 * 同一物品持续渲染不重放；动画结束后自动清理。
 	 */
 	private static final class GrowthState {
-		/** 进入动画起始游戏刻（world.getTime() 单调时钟）。 */
+		/** 进入动画起始游戏刻（world.getOverworldClockTime() 单调时钟）。 */
 		long enterTick;
 		/** 当前槽位物品（用于检测变化；空槽为 null）。 */
 		ItemStack current;
@@ -219,7 +219,7 @@ public final class CraftingPreviewRenderer {
 	/** LAST_STORE 对应的维度键（维度切换时清空，防跨维度误判）。 */
 	private static String lastStoreDimKey = "";
 
-	/** 双 pass 守卫（P1-2）：同一 tick（world.getTime()）内只推进一次动画状态——
+	/** 双 pass 守卫（P1-2）：同一 tick（world.getOverworldClockTime()）内只推进一次动画状态——
 	 * 主视图与阴影 pass 都会调 appendPreviewStates，第二次进入跳过 syncTransitions/
 	 * advanceGrowth（time 幂等，重复推进无视觉差异但 CPU 翻倍）。 */
 	private static long lastAdvancedTick = -1;
@@ -261,25 +261,25 @@ public final class CraftingPreviewRenderer {
 	}
 	/**
 	 * 物品模型更新缓存（渲染优化，用户确认实施）：
-	 * {@code updateForNonLivingEntity}（模型查询/图层决策/矩阵计算）是每帧渲染 CPU 大头，
+	 * {@code updateForNonLiving}（模型查询/图层决策/矩阵计算）是每帧渲染 CPU 大头，
 	 * 但结果只依赖 (displayContext, 物品栈内容)——台上物品内容未变时每帧重复调用是浪费。
-	 * 缓存命中直接复用上一帧构建好的 {@link ItemRenderState}（其渲染为只读提交，缩放/旋转
+	 * 缓存命中直接复用上一帧构建好的 {@link ItemStackRenderState}（其渲染为只读提交，缩放/旋转
 	 * 都在 matrices 上做，不入状态），内容/显示上下文变化时才重新 update。
 	 * WeakHashMap 弱 key：工作台记录/槽位栈被回收时条目自动清理，无泄漏。
 	 * 仅渲染线程访问（服务端不触碰）。
 	 */
-	private static final Map<ItemStateKey, ItemRenderState> ITEM_STATE_CACHE = new WeakHashMap<>();
+	private static final Map<ItemStateKey, ItemStackRenderState> ITEM_STATE_CACHE = new WeakHashMap<>();
 
 	private CraftingPreviewRenderer() {
 	}
 
 	/**
 	 * 标准方块实体路径的统一追加入口：由 {@link WorldRendererMixin}（主视图）与
-	 * {@link IrisShadowRendererMixin}（阴影 pass）在各自 {@code renderBlockEntities}
+	 * {@link IrisShadowRendererMixin}（阴影 pass）在各自 {@code submitBlockEntities}
 	 * 的 HEAD 调用，把当前所有工作台预览的标准方块实体渲染状态
-	 * （{@link PreviewRenderState}）追加进 {@code WorldRenderState.blockEntityRenderStates}。
+	 * （{@link PreviewRenderState}）追加进 {@code LevelRenderState.blockEntityRenderStates}。
 	 *
-	 * <p>主视图与阴影 pass 都用标准路径（{@code BlockEntityRenderManager.render}）渲染它们——
+	 * <p>主视图与阴影 pass 都用标准路径（{@code BlockEntityRenderDispatcher.render}）渲染它们——
 	 * 与附魔台/可视化工作台完全一致，因此<b>所有光影在正常视图与阴影下都一致</b>，
 	 * 不再有旧方案（AFTER_ENTITIES 旁路 + 阴影裸队列）在 MakeUp/Bliss/Sildur 下的
 	 * 错位/半透明/过亮问题。
@@ -288,16 +288,16 @@ public final class CraftingPreviewRenderer {
 	 * 朝向状态（FACING_STATE）。列表由 WorldRenderer/阴影 pass 每帧多次 clear() 重建，
 	 * 每次重建后本方法追加一次即可，同帧多 pass 不重复。
 	 *
-	 * @param worldRenderState 当前渲染的 WorldRenderState（blockEntityRenderStates 即标准
+	 * @param worldRenderState 当前渲染的 LevelRenderState（blockEntityRenderStates 即标准
 	 *                         BE 渲染列表，追加后由调用方循环统一渲染）
 	 */
-	public static void appendPreviewStates(net.minecraft.client.render.state.WorldRenderState worldRenderState) {
+	public static void appendPreviewStates(net.minecraft.client.renderer.state.level.LevelRenderState worldRenderState) {
 		// 幂等：列表已含预览状态（同帧另一 pass 已追加）则跳过，避免重复追加/渲染。
 		if (containsPreviewState(worldRenderState)) {
 			return;
 		}
-		MinecraftClient client = MinecraftClient.getInstance();
-		ClientWorld world = client.world;
+		Minecraft client = Minecraft.getInstance();
+		ClientLevel world = client.level;
 		Entity cameraEntity = client.getCameraEntity();
 		if (world == null || cameraEntity == null) {
 			return;
@@ -311,9 +311,9 @@ public final class CraftingPreviewRenderer {
 		// 生长动画状态同样只保留「仍是工作台」的位置（内存有界，与朝向状态同规模）。
 		GROWTH_STATE.keySet().removeIf(key -> world.getBlockState(key.pos()).getBlock() != Blocks.CRAFTING_TABLE);
 
-		float tickDelta = client.getRenderTickCounter().getTickProgress(true);
-		// 与 render() 同一单调时钟（world.getTime()）：动画相位/朝向转场与正常视图严格一致。
-		long time = world.getTime();
+		float tickDelta = client.getDeltaTracker().getGameTimeDeltaPartialTick(true);
+		// 与 render() 同一单调时钟（world.getOverworldClockTime()）：动画相位/朝向转场与正常视图严格一致。
+		long time = world.getOverworldClockTime();
 		PreviewConfig cfg = PreviewConfig.get();
 
 		// 模组总开关：关闭后阴影 pass 同样跳过。
@@ -337,8 +337,8 @@ public final class CraftingPreviewRenderer {
 		BlockPos guiPos = null;
 		List<ItemStack> guiGrid = null;
 		ItemStack guiResult = ItemStack.EMPTY;
-		if (client.currentScreen instanceof CraftingScreen screen
-				&& screen.getScreenHandler() instanceof CraftingScreenHandler handler) {
+		if (client.gui.screen() instanceof CraftingScreen screen
+				&& screen.getMenu() instanceof CraftingMenu handler) {
 			BlockPos hit = OpenTableTracker.get();
 			if (hit != null && world.getBlockState(hit).getBlock() == Blocks.CRAFTING_TABLE) {
 				guiPos = hit;
@@ -348,10 +348,10 @@ public final class CraftingPreviewRenderer {
 					// （setCount(0)）这些栈；若 PreviewRenderState 直接持有引用，提取那帧
 					// 渲染会读到已清空的栈 → 幻影闪烁/消失（用户反馈：提取仅剩一个材料会闪）。
 					// 副本保证渲染看到的是稳定快照，不受槽位栈清空影响。
-					ItemStack s = handler.getSlot(GRID_START_SLOT + i).getStack();
+					ItemStack s = handler.getSlot(GRID_START_SLOT + i).getItem();
 					guiGrid.add(s == null || s.isEmpty() ? ItemStack.EMPTY : s.copy());
 				}
-				ItemStack gr = handler.getSlot(RESULT_SLOT).getStack();
+				ItemStack gr = handler.getSlot(RESULT_SLOT).getItem();
 				guiResult = (gr == null || gr.isEmpty()) ? ItemStack.EMPTY : gr.copy();
 			}
 		}
@@ -379,7 +379,7 @@ public final class CraftingPreviewRenderer {
 		// 安全性：仅当 LAST_STORE 也为空才跳过——若上帧还有旧记录需过渡退场则正常执行；
 		// 一旦出现任何记录（hasAny）或打开 GUI，自动退出早退恢复正常渲染。
 		boolean idleFastSkip = guiPos == null
-				&& !CraftingGridStorage.hasAny(world.getRegistryKey().getValue().toString())
+				&& !CraftingGridStorage.hasAny(world.dimension().identifier().toString())
 				&& LAST_STORE.isEmpty();
 
 		// 同步驱动的过渡动画：先于存储分支处理缓存内容变化（内容从非空变空/不同 → 启动退场）。
@@ -439,7 +439,7 @@ public final class CraftingPreviewRenderer {
 			// guiPos 为 null（早退前提之一），故 inRangeNow 也为空；PREV_IN_RANGE 下方照常清空。
 		} else {
 			for (CraftingGridStorage.StoredPreview stored
-					: CraftingGridStorage.peekAll(world.getRegistryKey().getValue().toString())) {
+					: CraftingGridStorage.peekAll(world.dimension().identifier().toString())) {
 				if (withinRenderDistance(cfg, cameraEntity, stored.pos())) {
 					inRangeData.put(stored.pos(), stored.data());
 					inRangeNow.add(stored.pos());
@@ -552,7 +552,7 @@ public final class CraftingPreviewRenderer {
 	/**
 	 * 列表是否已含本帧的预览渲染状态（用于幂等去重）。
 	 */
-	private static boolean containsPreviewState(net.minecraft.client.render.state.WorldRenderState worldRenderState) {
+	private static boolean containsPreviewState(net.minecraft.client.renderer.state.level.LevelRenderState worldRenderState) {
 		for (BlockEntityRenderState state : worldRenderState.blockEntityRenderStates) {
 			if (state instanceof PreviewRenderState) {
 				return true;
@@ -564,8 +564,8 @@ public final class CraftingPreviewRenderer {
 	/**
 	 * 构造一个标准的方块实体渲染状态并追加到 BE 渲染列表。
 	 */
-	private static void appendOneState(net.minecraft.client.render.state.WorldRenderState worldRenderState,
-			ClientWorld world, long time, BlockPos pos, List<ItemStack> grid, ItemStack result) {
+	private static void appendOneState(net.minecraft.client.renderer.state.level.LevelRenderState worldRenderState,
+			ClientLevel world, long time, BlockPos pos, List<ItemStack> grid, ItemStack result) {
 		// 内容全空但仍需渲染的唯一情况：该位置有正在退场的物品（拿走动画收尾）。
 		if (!hasVisibleContent(grid, result) && !hasActiveExit(time, pos)) {
 			if (DIAG) {
@@ -577,9 +577,9 @@ public final class CraftingPreviewRenderer {
 					growthCount++;
 					GrowthState gs = e.getValue();
 					String cur = (gs.current != null && !gs.current.isEmpty())
-							? gs.current.getName().getString() : "-";
+							? gs.current.getHoverName().getString() : "-";
 					String ex = (gs.exiting != null && !gs.exiting.isEmpty())
-							? gs.exiting.getName().getString() : "-";
+							? gs.exiting.getHoverName().getString() : "-";
 					sb.append("[").append(e.getKey().index()).append(":c=").append(cur)
 							.append(",ex=").append(ex).append("] ");
 				}
@@ -590,13 +590,12 @@ public final class CraftingPreviewRenderer {
 			return;
 		}
 		PreviewRenderState state = new PreviewRenderState();
-		state.pos = pos;
-		state.blockState = world.getBlockState(pos);
+		state.blockPos = pos;
 		state.time = time;
 		state.grid = grid;
 		state.result = result;
 		state.hasContent = true;
-		state.lightmapCoordinates = computeLight(world, pos);
+		state.lightCoords = computeLight(world, pos);
 		worldRenderState.blockEntityRenderStates.add(state);
 	}
 
@@ -681,11 +680,11 @@ public final class CraftingPreviewRenderer {
 	 *
 	 * <p>幂等：同一槽位已有退场中的物品时不再重复启动（exiting == null 守卫）。
 	 */
-	private static void syncTransitions(PreviewConfig cfg, ClientWorld world, Entity cameraEntity, long time) {
+	private static void syncTransitions(PreviewConfig cfg, ClientLevel world, Entity cameraEntity, long time) {
 		if (!cfg.growthEnabled) {
 			return;
 		}
-		String dimKey = world.getRegistryKey().getValue().toString();
+		String dimKey = world.dimension().identifier().toString();
 		if (!dimKey.equals(lastStoreDimKey)) {
 			lastStoreDimKey = dimKey;
 			LAST_STORE.clear();
@@ -725,7 +724,7 @@ public final class CraftingPreviewRenderer {
 			}
 			// 槽位逐一对比：旧非空、新空/不同 → 退场
 			startExitForDiff(cfg, time, pos, prev.grid(), cur.grid());
-			if (!ItemStack.areEqual(prev.result(), cur.result())) {
+			if (!ItemStack.matches(prev.result(), cur.result())) {
 				GrowthKey gk = new GrowthKey(pos, RESULT_GROWTH_INDEX);
 				GrowthState st = GROWTH_STATE.computeIfAbsent(gk, k -> new GrowthState());
 				if (st.exiting == null && prev.result() != null && !prev.result().isEmpty()) {
@@ -760,7 +759,7 @@ public final class CraftingPreviewRenderer {
 				continue;
 			}
 			ItemStack newS = i < newGrid.size() ? newGrid.get(i) : ItemStack.EMPTY;
-			if (newS != null && !newS.isEmpty() && ItemStack.areEqual(oldS, newS)) {
+			if (newS != null && !newS.isEmpty() && ItemStack.matches(oldS, newS)) {
 				continue; // 内容未变
 			}
 			GrowthKey gk = new GrowthKey(pos, i);
@@ -776,8 +775,8 @@ public final class CraftingPreviewRenderer {
 	 * 按位置查找当前维度的保留记录（含全空记录的对比场景用不到空记录）——优先返回
 	 * 非空记录，兜底返回该位置的记录（可能为空，此时调用方自行判断内容）。
 	 */
-	private static CraftingGridStorage.GridData findStoredAt(ClientWorld world, BlockPos pos) {
-		String dimKey = world.getRegistryKey().getValue().toString();
+	private static CraftingGridStorage.GridData findStoredAt(ClientLevel world, BlockPos pos) {
+		String dimKey = world.dimension().identifier().toString();
 		for (CraftingGridStorage.StoredPreview stored : CraftingGridStorage.peekAll(dimKey)) {
 			if (stored.pos().equals(pos)) {
 				return stored.data();
@@ -886,11 +885,11 @@ public final class CraftingPreviewRenderer {
 	 *
 	 * <p>矩阵必须在调用前已平移到工作台方块左下角（相机相对），本方法不做任何平移/压栈；
 	 * 光照由调用方提供（状态内存储的 lightmap）。
-	 * 被正常视图与阴影 pass 的 {@link BlockEntityRenderManagerMixin} 共用——两处动画状态
+	 * 被正常视图与阴影 pass 的 {@link BlockEntityRenderDispatcherMixin} 共用——两处动画状态
 	 * （FACING_STATE 按 tablePos 共享）严格一致。
 	 */
-	public static void renderPreviewGeometry(MatrixStack matrices, OrderedRenderCommandQueue queue,
-			MinecraftClient client, Entity cameraEntity, PreviewConfig cfg, long time, float tickDelta,
+	public static void renderPreviewGeometry(PoseStack matrices, SubmitNodeCollector collector,
+			Minecraft client, Entity cameraEntity, PreviewConfig cfg, long time, float tickDelta,
 			BlockPos tablePos, List<ItemStack> grid, ItemStack result, int light) {
 		// 内容全空但仍需渲染的唯一情况：该位置有正在退场的物品（拿走动画收尾）。
 		if (!hasVisibleContent(grid, result) && !hasActiveExit(time, tablePos)) {
@@ -918,7 +917,7 @@ public final class CraftingPreviewRenderer {
 				float sectorBaseDeg = sector * FACING_SECTOR_DEGREES;
 
 				FacingState st = FACING_STATE.computeIfAbsent(tablePos, p -> new FacingState());
-				// 与 renderPreview 的 time（= world.getTime() 单调时钟）同一时钟，转场进度才能用
+				// 与 renderPreview 的 time（= world.getOverworldClockTime() 单调时钟）同一时钟，转场进度才能用
 				// (time + tickDelta) 逐渲染帧插值（否则两套时钟相减基线错乱）。+1/刻与 getTime 一致。
 				long nowTick = time;
 				if (st.sector != sector) {
@@ -941,7 +940,7 @@ public final class CraftingPreviewRenderer {
 				}
 				float animTicks = (float) Math.max(1.0D, cfg.facingAnimationSeconds * 20.0D);
 				// 用小数刻 (time + tickDelta) 而非整数刻推进：每渲染帧角度都移动（60~144fps 下无 20 刻
-				// 顿挫感），与浮动/结果动画同款插值节奏。time 已改用单调的 world.getTime()，配下界钳制
+				// 顿挫感），与浮动/结果动画同款插值节奏。time 已改用单调的 world.getOverworldClockTime()，配下界钳制
 				// 防御任何时钟回退（如重进世界新档总时更小）——否则 animateStartTick > nowTick 产生
 				// 巨大负进度、面板疯狂旋转（getTimeOfDay 正是被 /time 指令跳变触发此问题）。
 				float progress = Math.max(0.0F, ((time + tickDelta) - st.animStartTick) / animTicks);
@@ -951,7 +950,7 @@ public final class CraftingPreviewRenderer {
 					// ease-out（缓出，参考 VS 的 ease-out）：先快后慢、最后减速停稳，比匀速急停更丝滑。
 					float e = 1.0F - progress;
 					float eased = 1.0F - e * e * e;
-					float deltaDeg = MathHelper.wrapDegrees(st.animTargetDeg - st.animStartDeg);
+					float deltaDeg = Mth.wrapDegrees(st.animTargetDeg - st.animStartDeg);
 					st.currentDeg = st.animStartDeg + deltaDeg * eased;
 				}
 				FACING_TOUCHED.add(tablePos);
@@ -960,7 +959,7 @@ public final class CraftingPreviewRenderer {
 			if (panelYawDeg != 0.0F) {
 				// 以工作台顶面中心为旋转轴（纯竖直轴旋转，与高度无关）。
 				matrices.translate(0.5D, 0.0D, 0.5D);
-				matrices.multiply(RotationAxis.POSITIVE_Y.rotation(panelYawDeg * MathHelper.RADIANS_PER_DEGREE));
+				matrices.mulPose(Axis.YP.rotation(panelYawDeg * Mth.DEG_TO_RAD));
 				matrices.translate(-0.5D, 0.0D, -0.5D);
 			}
 
@@ -989,14 +988,14 @@ public final class CraftingPreviewRenderer {
 				// 退场中的旧物品：原地缩小消失（平摊/悬浮都按各自落位）。
 				if (!anim.exiting().isEmpty()) {
 					if (cfg.ingredientStyle == PreviewConfig.IngredientStyle.FLAT) {
-						renderItem(matrices, queue, anim.exiting(), localX, TABLE_TOP_Y, localZ,
+						renderItem(matrices, collector, anim.exiting(), localX, TABLE_TOP_Y, localZ,
 								(float) cfg.materialScale * anim.exitFactor(), 0.0F, light,
 								client, cameraEntity, true, ItemDisplayContext.FIXED);
 					} else {
 						double exitBase = materialBase
 								- (anim.exiting().getItem() instanceof BlockItem ? BLOCK_ITEM_LOWER_OFFSET : 0.0D);
 						// 退场物冻结在被拿走时的浮动高度（anim.exitBob），不瞬移回基座。
-						renderItem(matrices, queue, anim.exiting(), localX, exitBase + anim.exitBob(), localZ,
+						renderItem(matrices, collector, anim.exiting(), localX, exitBase + anim.exitBob(), localZ,
 								(float) cfg.materialScale * anim.exitFactor(), 0.0F, light,
 								client, cameraEntity, false, ItemDisplayContext.FIXED);
 					}
@@ -1011,7 +1010,7 @@ public final class CraftingPreviewRenderer {
 					// 不浮空；Y 传哨兵值台面顶，实际落台高度由 renderItem 按模型真实边界重算，
 					// 避免门/栅栏等几何不同的物品悬空或陷入桌面。3D 方块按正常放置姿态站立
 					// （顶面朝上、底边落台、正面朝向面板），刀/门/锭等 2D 薄片躺平（正面朝上）。
-					renderItem(matrices, queue, stack, localX, TABLE_TOP_Y, localZ,
+					renderItem(matrices, collector, stack, localX, TABLE_TOP_Y, localZ,
 							(float) cfg.materialScale * anim.enterFactor(), 0.0F, light,
 							client, cameraEntity, true, ItemDisplayContext.FIXED);
 				} else {
@@ -1021,7 +1020,7 @@ public final class CraftingPreviewRenderer {
 							- (stack.getItem() instanceof BlockItem ? BLOCK_ITEM_LOWER_OFFSET : 0.0D);
 
 					double bob = bobFor(cfg.floatingMode, materialPhase, index, cfg.floatAmplitude);
-					renderItem(matrices, queue, stack, localX, baseHeight + bob, localZ,
+					renderItem(matrices, collector, stack, localX, baseHeight + bob, localZ,
 							(float) cfg.materialScale * anim.enterFactor(), 0.0F, light,
 							client, cameraEntity, false, ItemDisplayContext.FIXED);
 				}
@@ -1040,7 +1039,7 @@ public final class CraftingPreviewRenderer {
 					double exitRaise = exitIsFlat ? RESULT_FLAT_HEIGHT_RAISE : 0.0D;
 					float exitYawDeg = angleDeg - panelYawDeg;
 					// 退场结果冻结在被拿走时的浮动高度（anim.exitBob），不瞬移回中间基座。
-					renderItem(matrices, queue, anim.exiting(), 0.5D, resultBase + exitRaise + anim.exitBob(), 0.5D,
+					renderItem(matrices, collector, anim.exiting(), 0.5D, resultBase + exitRaise + anim.exitBob(), 0.5D,
 							(float) cfg.resultScale * exitFlat * anim.exitFactor(), exitYawDeg, light,
 							client, cameraEntity, false, ItemDisplayContext.GROUND);
 				}
@@ -1057,7 +1056,7 @@ public final class CraftingPreviewRenderer {
 					boolean resultFlat = isFlatItem(result, client, cameraEntity, ItemDisplayContext.GROUND);
 					float flatBonus = resultFlat ? RESULT_FLAT_BONUS_SCALE : 1.0F;
 					double flatRaise = resultFlat ? RESULT_FLAT_HEIGHT_RAISE : 0.0D;
-					renderItem(matrices, queue, result, 0.5D, resultBase + flatRaise + resultBob, 0.5D,
+					renderItem(matrices, collector, result, 0.5D, resultBase + flatRaise + resultBob, 0.5D,
 							(float) cfg.resultScale * flatBonus * anim.enterFactor(), resultYawDeg, light,
 							client, cameraEntity, false, ItemDisplayContext.GROUND);
 				}
@@ -1150,11 +1149,8 @@ public final class CraftingPreviewRenderer {
 	 * 天空光，打包成 lightmap 坐标。夜晚/室内自然变暗，与原版物品实机光照一致，
 	 * 光影（如 BLS）下也不会因全亮而显得自发光（光照模式配置已移除，固定此行为）。
 	 */
-	private static int computeLight(ClientWorld world, BlockPos tablePos) {
-		BlockPos samplePos = tablePos.up();
-		int blockLight = world.getLightLevel(LightType.BLOCK, samplePos);
-		int skyLight = world.getLightLevel(LightType.SKY, samplePos);
-		return LightmapTextureManager.pack(blockLight, skyLight);
+	private static int computeLight(ClientLevel world, BlockPos tablePos) {
+		return LightCoordsUtil.getLightCoords(world, tablePos.above());
 	}
 
 	/**
@@ -1193,7 +1189,7 @@ public final class CraftingPreviewRenderer {
 				st.exitTick = time;
 				if (DIAG && index == RESULT_GROWTH_INDEX) {
 					TemplateMod.LOGGER.warn("[DIAG] t={} pos={} RESULT 启动退场 exitTick={} 当前物={}", time, tablePos, time,
-							st.exiting.getName().getString());
+							st.exiting.getHoverName().getString());
 				}
 			}
 			st.current = null;
@@ -1205,7 +1201,7 @@ public final class CraftingPreviewRenderer {
 				// 真正拿走。若此刻即将退场的旧物与回来的栈是同一个、且退场刚起步（宽限窗内），
 				// 则取消退场并保持原进入进度：不缩、不弹，平滑无闪烁。
 				if (st.exiting != null && !st.exiting.isEmpty()
-						&& ItemStack.areEqual(st.exiting, stack)
+						&& ItemStack.matches(st.exiting, stack)
 						&& (time + tickDelta) - st.exitTick < TRANSIENT_GRACE_TICKS) {
 					if (DIAG && index == RESULT_GROWTH_INDEX) {
 						TemplateMod.LOGGER.warn("[DIAG] t={} pos={} RESULT 宽限取消退场(同物回归)", time, tablePos);
@@ -1222,7 +1218,7 @@ public final class CraftingPreviewRenderer {
 								time, tablePos, st.exiting == null);
 					}
 				}
-			} else if (!ItemStack.areEqual(st.current, stack)) {
+			} else if (!ItemStack.matches(st.current, stack)) {
 				// 换成了不同物品：旧物品同时退场，新物品重新入场。
 				if (st.current != null && !st.current.isEmpty() && st.exiting == null) {
 					st.exiting = st.current;
@@ -1284,22 +1280,22 @@ public final class CraftingPreviewRenderer {
 	 * （模型体厚 ≤ 1/16 格 = 扁平）。扁平合成结果额外放大 {@link #RESULT_FLAT_BONUS_SCALE}。
 	 * 复用 {@link #ITEM_STATE_CACHE} 避免重复建模（结果与材料共享该缓存，内容不变即命中）。
 	 */
-	private static boolean isFlatItem(ItemStack stack, MinecraftClient client,
+	private static boolean isFlatItem(ItemStack stack, Minecraft client,
 			Entity cameraEntity, ItemDisplayContext displayContext) {
 		if (stack == null || stack.isEmpty()) {
 			return false;
 		}
-		ItemRenderState st = ITEM_STATE_CACHE.computeIfAbsent(
+		ItemStackRenderState st = ITEM_STATE_CACHE.computeIfAbsent(
 				new ItemStateKey(displayContext, stack), k -> {
-					ItemRenderState s = new ItemRenderState();
-					client.getItemModelManager()
-							.updateForNonLivingEntity(s, stack, displayContext, cameraEntity);
+					ItemStackRenderState s = new ItemStackRenderState();
+					client.getItemModelResolver()
+							.updateForNonLiving(s, stack, displayContext, cameraEntity);
 					return s;
 				});
 		if (st.isEmpty()) {
 			return false;
 		}
-		return st.getModelBoundingBox().getLengthZ() <= 0.0625D;
+		return st.getModelBoundingBox().getZsize() <= 0.0625D;
 	}
 
 	/**
@@ -1311,20 +1307,20 @@ public final class CraftingPreviewRenderer {
 	 *                 平放、正面朝上。
 	 *                 为 {@code false} 时保持直立自然渲染（悬浮/结果）。
 	 */
-	private static void renderItem(MatrixStack matrices, OrderedRenderCommandQueue queue, ItemStack stack,
+	private static void renderItem(PoseStack matrices, SubmitNodeCollector collector, ItemStack stack,
 			double x, double y, double z, float scale, float yawAngle,
-			int light, MinecraftClient client, Entity cameraEntity, boolean layFlat,
+			int light, Minecraft client, Entity cameraEntity, boolean layFlat,
 			ItemDisplayContext displayContext) {
 		// 先构建物品渲染状态：平摊模式需要真实模型边界计算落台高度与旋转方向（先于矩阵压栈，
 		// 渲染状态与位置无关，此处构建即可）。
 		// 渲染优化（物品模型更新缓存）：内容/显示上下文未变时复用缓存状态，跳过
-		// updateForNonLivingEntity（每帧每物品的模型查询+图层决策是大头）。缩放/旋转/位置
-		// 全部在下方 matrices 上做，不入 ItemRenderState，故复用安全。
-		ItemRenderState itemState = ITEM_STATE_CACHE.computeIfAbsent(
+		// updateForNonLiving（每帧每物品的模型查询+图层决策是大头）。缩放/旋转/位置
+		// 全部在下方 matrices 上做，不入 ItemStackRenderState，故复用安全。
+		ItemStackRenderState itemState = ITEM_STATE_CACHE.computeIfAbsent(
 				new ItemStateKey(displayContext, stack), k -> {
-					ItemRenderState st = new ItemRenderState();
-					client.getItemModelManager()
-							.updateForNonLivingEntity(st, stack, displayContext, cameraEntity);
+					ItemStackRenderState st = new ItemStackRenderState();
+					client.getItemModelResolver()
+							.updateForNonLiving(st, stack, displayContext, cameraEntity);
 					return st;
 				});
 		if (itemState.isEmpty()) {
@@ -1336,8 +1332,8 @@ public final class CraftingPreviewRenderer {
 		// 为 1.0 → 额外乘 FLAT_ITEM_EXTRA_SCALE（0.5）使两者最终显示同大（1.0×0.5 == 0.5×1.0）。
 		// 此前按 {code instanceof BlockItem} 分类：门是 BlockItem 会走方块分支、按 1.0×scale 满格
 		// 渲染而过大的根因（历次调系数无效的原由）。
-		Box box = itemState.getModelBoundingBox();
-		boolean flatCube = box.getLengthZ() > 0.0625D;
+		AABB box = itemState.getModelBoundingBox();
+		boolean flatCube = box.getZsize() > 0.0625D;
 		float effectiveScale = flatCube ? scale : scale * FLAT_ITEM_EXTRA_SCALE;
 
 		// 平摊落台：3D 方块按正常放置姿态站立在台面——不绕 X 躺平，底边（模型最小 Y）对齐台面顶
@@ -1349,20 +1345,20 @@ public final class CraftingPreviewRenderer {
 					: (float) TABLE_TOP_Y;
 		}
 
-		matrices.push();
+		matrices.pushPose();
 		try {
 			matrices.translate(x, pivotY, z);
 
 			if (layFlat && !flatCube) {
 				// 平摊旋转（方向由 JOML 实测验证）：仅 2D 精灵绕 X −90° 躺平、正面朝上；
 				// 3D 方块保持正常放置姿态（顶面朝上），不参与躺平旋转。
-				matrices.multiply(RotationAxis.POSITIVE_X.rotation(
-						-90.0F * MathHelper.RADIANS_PER_DEGREE));
+				matrices.mulPose(Axis.XP.rotation(
+						-90.0F * Mth.DEG_TO_RAD));
 			}
 
 			if (yawAngle != 0.0F) {
 				// 绕竖直轴缓慢旋转（用于合成结果）。rotation 以弧度计，先由角度换算。
-				matrices.multiply(RotationAxis.POSITIVE_Y.rotation(yawAngle * MathHelper.RADIANS_PER_DEGREE));
+				matrices.mulPose(Axis.YP.rotation(yawAngle * Mth.DEG_TO_RAD));
 			}
 
 			matrices.scale(effectiveScale, effectiveScale, effectiveScale);
@@ -1370,9 +1366,9 @@ public final class CraftingPreviewRenderer {
 			// 提交物品的 3D 渲染状态（原版 1.21.11 ItemModel 管线）。
 			// overlay 使用 DEFAULT_UV（采样纯白纹素）；若传 0 会采样到 overlay 纹理
 			// 左上角的红色区域（alpha≈0.7），entity 着色器会将其混入颜色导致材质变暗发红。
-			itemState.render(matrices, queue, light, OverlayTexture.DEFAULT_UV, 0);
+			itemState.submit(matrices, collector, light, OverlayTexture.NO_OVERLAY, 0);
 		} finally {
-			matrices.pop();
+			matrices.popPose();
 		}
 	}
 

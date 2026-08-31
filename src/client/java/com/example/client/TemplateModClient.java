@@ -18,9 +18,9 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.RegistryOps;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.resources.RegistryOps;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,8 +30,8 @@ public class TemplateModClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		// 预览渲染（vanilla 联机兼容）：不再注册自定义 BlockEntityType/渲染器——那会进联机
 		// 注册表同步、未装 mod 的 vanilla 客户端被拒。渲染由 WorldRendererMixin /
-		// IrisShadowRendererMixin 追加预览状态 + BlockEntityRenderManagerMixin 手工渲染（无
-		// 注册表痕迹）。参见 BlockEntityRenderManagerMixin 类注释。
+		// IrisShadowRendererMixin 追加预览状态 + BlockEntityRenderDispatcherMixin 手工渲染（无
+		// 注册表痕迹）。参见 BlockEntityRenderDispatcherMixin 类注释。
 
 		// keep 偏好上报（C2S）：客户端把自己的「关闭后保留材料」偏好发服务端（服务端据此按
 		// 玩家判定关桌是否保留，而非用房主/服务端全局配置）。⋆⋆ 客户端在各端持有独立 Config。
@@ -43,7 +43,7 @@ public class TemplateModClient implements ClientModInitializer {
 		// ① 开桌坐标 → OpenTableTracker（渲染器在 CraftingScreen 打开期间读取定位实时预览）。
 		//    单机下服务端已直写 tracker，此处为幂等重复；联机下是唯一来源。
 		//    顺带：收到「打开工作台」通知时，把当前 keep 偏好重上报一次（覆盖运行中改配置）。
-		ClientPlayNetworking.registerGlobalReceiver(CraftingTableOpenS2CPacket.ID,
+		ClientPlayNetworking.registerGlobalReceiver(CraftingTableOpenS2CPacket.TYPE,
 				(payload, context) -> context.client().execute(() -> {
 					OpenTableTracker.set(payload.pos(), payload.dimensionKey());
 					sendKeepPref();
@@ -55,14 +55,14 @@ public class TemplateModClient implements ClientModInitializer {
 		//    世界注册表 ops 解码为完整栈（含附魔等组件），再写缓存。
 		//    clientApplyIfChanged：与缓存相同则跳过——单机下服务端 store 已写同 JVM 缓存，
 		//    回写相等数据无害；内容不同（清除/更新）正常写入。
-		ClientPlayNetworking.registerGlobalReceiver(CraftingGridStoredS2CPacket.ID,
+		ClientPlayNetworking.registerGlobalReceiver(CraftingGridStoredS2CPacket.TYPE,
 				(payload, context) -> context.client().execute(() -> {
-					MinecraftClient client = context.client();
-					if (client.world == null) {
+					Minecraft client = context.client();
+					if (client.level == null) {
 						return; // 无世界（未进游戏）时不处理，缓存无可写对象
 					}
-					RegistryOps<JsonElement> ops = RegistryOps.of(JsonOps.INSTANCE,
-							client.world.getRegistryManager());
+					RegistryOps<JsonElement> ops = RegistryOps.create(JsonOps.INSTANCE,
+							client.level.registryAccess());
 					List<ItemStack> inputs = new ArrayList<>(9);
 					for (String s : payload.inputJson()) {
 						inputs.add(CraftingGridStoredS2CPacket.fromJson(ops, s));
@@ -75,7 +75,7 @@ public class TemplateModClient implements ClientModInitializer {
 		// ③ 工作台朝向（最后操作者方向 + UUID）→ TableFacing：所有客户端由此让预览面板朝向
 		//    「上一个操作工作台的人」（开桌广播 + 加入补发共用此入口，可重复设置、幂等）。
 		//    FOLLOW 档再用 UUID 在本地世界找操作者实体，做客户端本地实时跟随。
-		ClientPlayNetworking.registerGlobalReceiver(CraftingTableFacingS2CPacket.ID,
+		ClientPlayNetworking.registerGlobalReceiver(CraftingTableFacingS2CPacket.TYPE,
 				(payload, context) -> context.client().execute(() ->
 						TableFacing.setFacing(payload.pos(), payload.sector(), payload.operatorUuid())));
 	}

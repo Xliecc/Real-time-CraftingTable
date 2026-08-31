@@ -11,9 +11,9 @@ import me.shedaniel.clothconfig2.api.ConfigEntryBuilder;
 
 import net.fabricmc.loader.api.FabricLoader;
 
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.network.chat.Component;
 
 import java.util.Locale;
 
@@ -55,24 +55,24 @@ public final class PreviewModMenu implements ModMenuApi {
 
 		ConfigBuilder builder = ConfigBuilder.create()
 				.setParentScreen(parent)
-				.setTitle(Text.translatable("rtct.config.title"))
+				.setTitle(Component.translatable("rtct.config.title"))
 				.setSavingRunnable(cfg::save);
 		ConfigEntryBuilder entry = builder.entryBuilder();
 
 		// —— 分类：通用（材料与结果共用） ——
-		ConfigCategory commonCat = builder.getOrCreateCategory(Text.translatable("rtct.config.cat.common"));
+		ConfigCategory commonCat = builder.getOrCreateCategory(Component.translatable("rtct.config.cat.common"));
 
 		// —— 模组总开关：关闭后完全不渲染合成预览（AFTER_ENTITIES 与阴影 pass 都跳过） ——
 		commonCat.addEntry(entry.startBooleanToggle(
-						Text.translatable("rtct.config.enable.name"), cfg.enabled)
+						Component.translatable("rtct.config.enable.name"), cfg.enabled)
 				.setDefaultValue(true)
 				.setSaveConsumer(value -> cfg.enabled = value)
 				.build());
 
 		commonCat.addEntry(entry.startEnumSelector(
-						Text.translatable("rtct.config.floatingType.name"), PreviewConfig.FloatingMode.class, cfg.floatingMode)
+						Component.translatable("rtct.config.floatingType.name"), PreviewConfig.FloatingMode.class, cfg.floatingMode)
 				.setDefaultValue(PreviewConfig.FloatingMode.WAVE)
-				.setEnumNameProvider(mode -> Text.translatable(switch ((PreviewConfig.FloatingMode) mode) {
+				.setEnumNameProvider(mode -> Component.translatable(switch ((PreviewConfig.FloatingMode) mode) {
 					case NONE -> "rtct.config.floatingType.none";
 					case WAVE -> "rtct.config.floatingType.wave";
 					case SYNC -> "rtct.config.floatingType.sync";
@@ -81,59 +81,59 @@ public final class PreviewModMenu implements ModMenuApi {
 				.build());
 
 		commonCat.addEntry(entry.startEnumSelector(
-						Text.translatable("rtct.config.visualStyle.name"), PreviewConfig.IngredientStyle.class, cfg.ingredientStyle)
+						Component.translatable("rtct.config.visualStyle.name"), PreviewConfig.IngredientStyle.class, cfg.ingredientStyle)
 				.setDefaultValue(PreviewConfig.IngredientStyle.FLOAT)
-				.setEnumNameProvider(mode -> Text.translatable(switch ((PreviewConfig.IngredientStyle) mode) {
+				.setEnumNameProvider(mode -> Component.translatable(switch ((PreviewConfig.IngredientStyle) mode) {
 					case FLOAT -> "rtct.config.visualStyle.float";
 					case FLAT -> "rtct.config.visualStyle.flat";
 				}))
-				.setTooltip(Text.translatable("rtct.config.visualStyle.tooltip"))
+				.setTooltip(Component.translatable("rtct.config.visualStyle.tooltip"))
 				.setSaveConsumer(mode -> cfg.ingredientStyle = mode)
 				.build());
 
 		// 面板朝向：跟随玩家旋转（整块面板绕工作台中心轴转向玩家）/ 不随玩家旋转（开桌方向锁定）。
 		commonCat.addEntry(entry.startEnumSelector(
-						Text.translatable("rtct.config.facing.name"), PreviewConfig.FacingMode.class, cfg.facingMode)
+						Component.translatable("rtct.config.facing.name"), PreviewConfig.FacingMode.class, cfg.facingMode)
 				.setDefaultValue(PreviewConfig.FacingMode.FIXED)
-				.setEnumNameProvider(mode -> Text.translatable(switch ((PreviewConfig.FacingMode) mode) {
+				.setEnumNameProvider(mode -> Component.translatable(switch ((PreviewConfig.FacingMode) mode) {
 					case FOLLOW_PLAYER -> "rtct.config.facing.follow";
 					case FIXED -> "rtct.config.facing.fixed";
 				}))
-				.setTooltip(Text.translatable("rtct.config.facing.tooltip"))
+				.setTooltip(Component.translatable("rtct.config.facing.tooltip"))
 				.setSaveConsumer(mode -> cfg.facingMode = mode)
 				.build());
 
 		// 朝向转场用时：仅「跟随玩家旋转」时生效（面板跨扇形转场的动画时长，越小转得越快）。
 		// 新配置项同步规则：PreviewConfig 字段、setDefaultValue、run 与 PCL2 两份 JSON（只增不改）。
 		commonCat.addEntry(entry.startIntSlider(
-						Text.translatable("rtct.config.facingAnim.name"),
+						Component.translatable("rtct.config.facingAnim.name"),
 						(int) Math.round(cfg.facingAnimationSeconds * 10.0), 1, 11)
 				.setDefaultValue(6)
-				.setTextGetter(tenths -> Text.translatable("rtct.config.facingAnim.seconds",
+				.setTextGetter(tenths -> Component.translatable("rtct.config.facingAnim.seconds",
 						fmt("%.1f", tenths / 10.0)))
 				.setSaveConsumer(tenths -> cfg.facingAnimationSeconds = tenths / 10.0)
 				.build());
 
 		commonCat.addEntry(entry.startBooleanToggle(
-						Text.translatable("rtct.config.keep.name"), cfg.keepItemsWhenClosed)
+						Component.translatable("rtct.config.keep.name"), cfg.keepItemsWhenClosed)
 				.setDefaultValue(false)
-				.setTooltip(Text.translatable("rtct.config.keep.tooltip"))
+				.setTooltip(Component.translatable("rtct.config.keep.tooltip"))
 				.setSaveConsumer(value -> cfg.keepItemsWhenClosed = value)
 				.build());
 
 		// 生长动画：材料/结果出现（放入新物品或更换物品）时从零放大到配置尺寸的弹出动画。
 		commonCat.addEntry(entry.startBooleanToggle(
-						Text.translatable("rtct.config.growth.name"), cfg.growthEnabled)
+						Component.translatable("rtct.config.growth.name"), cfg.growthEnabled)
 				.setDefaultValue(true)
-				.setTooltip(Text.translatable("rtct.config.growth.tooltip"))
+				.setTooltip(Component.translatable("rtct.config.growth.tooltip"))
 				.setSaveConsumer(value -> cfg.growthEnabled = value)
 				.build());
 
 		commonCat.addEntry(entry.startIntSlider(
-						Text.translatable("rtct.config.growthTime.name"),
+						Component.translatable("rtct.config.growthTime.name"),
 						(int) Math.round(cfg.growthSeconds * 100.0), 5, 55)
 				.setDefaultValue(30)
-				.setTextGetter(hundredths -> Text.translatable("rtct.config.growthTime.seconds",
+				.setTextGetter(hundredths -> Component.translatable("rtct.config.growthTime.seconds",
 						fmt("%.2f", hundredths / 100.0)))
 				.setSaveConsumer(hundredths -> cfg.growthSeconds = hundredths / 100.0)
 				.build());
@@ -141,103 +141,103 @@ public final class PreviewModMenu implements ModMenuApi {
 		// 预览渲染距离：超过此距离的工作台预览不构建渲染状态（远处工作台白算=性能浪费）。
 		// 0 = 不限（全图渲染）。默认 64 格——够「走近看」，同时省去远处工作台的每帧动画/方位。
 		commonCat.addEntry(entry.startIntSlider(
-						Text.translatable("rtct.config.renderDist.name"), cfg.renderDistance, 0, 128)
+						Component.translatable("rtct.config.renderDist.name"), cfg.renderDistance, 0, 128)
 				.setDefaultValue(64)
 				.setTextGetter(dist -> dist == 0
-						? Text.translatable("rtct.config.renderDist.unlimited")
-						: Text.translatable("rtct.config.renderDist.blocks", dist))
-				.setTooltip(Text.translatable("rtct.config.renderDist.tooltip"))
+						? Component.translatable("rtct.config.renderDist.unlimited")
+						: Component.translatable("rtct.config.renderDist.blocks", dist))
+				.setTooltip(Component.translatable("rtct.config.renderDist.tooltip"))
 				.setSaveConsumer(dist -> cfg.renderDistance = dist)
 				.build());
 
 		// —— 分类：物品（合成材料） ——
-		ConfigCategory itemCat = builder.getOrCreateCategory(Text.translatable("rtct.config.cat.items"));
+		ConfigCategory itemCat = builder.getOrCreateCategory(Component.translatable("rtct.config.cat.items"));
 
 		itemCat.addEntry(entry.startIntSlider(
-						Text.translatable("rtct.config.floatHeight.name"),
+						Component.translatable("rtct.config.floatHeight.name"),
 						(int) Math.round(cfg.floatHeight * 100.0), 1, 17)
 				.setDefaultValue(9)
-				.setTextGetter(hundredths -> Text.translatable("rtct.config.floatHeight.blocks",
+				.setTextGetter(hundredths -> Component.translatable("rtct.config.floatHeight.blocks",
 						fmt("%.2f", hundredths / 100.0)))
 				.setSaveConsumer(hundredths -> cfg.floatHeight = hundredths / 100.0)
 				.build());
 
 		itemCat.addEntry(entry.startIntSlider(
-						Text.translatable("rtct.config.itemSize.name"),
+						Component.translatable("rtct.config.itemSize.name"),
 						(int) Math.round(cfg.materialScale * 100.0), 2, 46)
 				.setDefaultValue(24)
-				.setTextGetter(hundredths -> Text.translatable("rtct.config.itemSize.blocks",
+				.setTextGetter(hundredths -> Component.translatable("rtct.config.itemSize.blocks",
 						fmt("%.2f", hundredths / 100.0)))
 				.setSaveConsumer(hundredths -> cfg.materialScale = hundredths / 100.0)
 				.build());
 
 		itemCat.addEntry(entry.startIntSlider(
-						Text.translatable("rtct.config.slotSpacing.name"),
+						Component.translatable("rtct.config.slotSpacing.name"),
 						(int) Math.round(cfg.slotSpacing * 1000.0), 47, 327)
 				.setDefaultValue(187)
-				.setTextGetter(thousandths -> Text.translatable("rtct.config.slotSpacing.blocks",
+				.setTextGetter(thousandths -> Component.translatable("rtct.config.slotSpacing.blocks",
 						fmt("%.3f", thousandths / 1000.0)))
 				.setSaveConsumer(thousandths -> cfg.slotSpacing = thousandths / 1000.0)
 				.build());
 
 		itemCat.addEntry(entry.startIntSlider(
-						Text.translatable("rtct.config.floatSpeed.name"),
+						Component.translatable("rtct.config.floatSpeed.name"),
 						(int) Math.round(cfg.floatSeconds), 1, 5)
 				.setDefaultValue(3)
-				.setTextGetter(sec -> Text.translatable("rtct.config.floatSpeed.seconds", sec))
+				.setTextGetter(sec -> Component.translatable("rtct.config.floatSpeed.seconds", sec))
 				.setSaveConsumer(sec -> cfg.floatSeconds = sec)
 				.build());
 
 		itemCat.addEntry(entry.startIntSlider(
-						Text.translatable("rtct.config.floatAmp.name"),
+						Component.translatable("rtct.config.floatAmp.name"),
 						(int) Math.round(cfg.floatAmplitude * 1000.0), 0, 8)
 				.setDefaultValue(4)
-				.setTextGetter(thousandths -> Text.translatable("rtct.config.floatAmp.blocks",
+				.setTextGetter(thousandths -> Component.translatable("rtct.config.floatAmp.blocks",
 						fmt("%.3f", thousandths / 1000.0)))
 				.setSaveConsumer(thousandths -> cfg.floatAmplitude = thousandths / 1000.0)
 				.build());
 
 		// —— 分类：结果（最终合成效果） ——
-		ConfigCategory resultCat = builder.getOrCreateCategory(Text.translatable("rtct.config.cat.result"));
+		ConfigCategory resultCat = builder.getOrCreateCategory(Component.translatable("rtct.config.cat.result"));
 
 		resultCat.addEntry(entry.startIntSlider(
-						Text.translatable("rtct.config.resultSize.name"),
+						Component.translatable("rtct.config.resultSize.name"),
 						(int) Math.round(cfg.resultScale * 100.0), 20, 180)
 				.setDefaultValue(100)
-				.setTextGetter(hundredths -> Text.translatable("rtct.config.resultSize.blocks",
+				.setTextGetter(hundredths -> Component.translatable("rtct.config.resultSize.blocks",
 						fmt("%.2f", hundredths / 100.0)))
 				.setSaveConsumer(hundredths -> cfg.resultScale = hundredths / 100.0)
 				.build());
 
 		resultCat.addEntry(entry.startIntSlider(
-						Text.translatable("rtct.config.rotateSpeed.name"), cfg.rotationSeconds, 1, 15)
+						Component.translatable("rtct.config.rotateSpeed.name"), cfg.rotationSeconds, 1, 15)
 				.setDefaultValue(8)
-				.setTextGetter(sec -> Text.translatable("rtct.config.rotateSpeed.seconds", sec))
+				.setTextGetter(sec -> Component.translatable("rtct.config.rotateSpeed.seconds", sec))
 				.setSaveConsumer(sec -> cfg.rotationSeconds = sec)
 				.build());
 
 		resultCat.addEntry(entry.startIntSlider(
-						Text.translatable("rtct.config.resultHeight.name"),
+						Component.translatable("rtct.config.resultHeight.name"),
 						(int) Math.round(cfg.resultHeightGap * 100.0), 2, 42)
 				.setDefaultValue(22)
-				.setTextGetter(hundredths -> Text.translatable("rtct.config.resultHeight.blocks",
+				.setTextGetter(hundredths -> Component.translatable("rtct.config.resultHeight.blocks",
 						fmt("%.2f", hundredths / 100.0)))
 				.setSaveConsumer(hundredths -> cfg.resultHeightGap = hundredths / 100.0)
 				.build());
 
 		resultCat.addEntry(entry.startIntSlider(
-						Text.translatable("rtct.config.resultFloatSpeed.name"),
+						Component.translatable("rtct.config.resultFloatSpeed.name"),
 						(int) Math.round(cfg.resultFloatSeconds), 1, 7)
 				.setDefaultValue(4)
-				.setTextGetter(sec -> Text.translatable("rtct.config.resultFloatSpeed.seconds", sec))
+				.setTextGetter(sec -> Component.translatable("rtct.config.resultFloatSpeed.seconds", sec))
 				.setSaveConsumer(sec -> cfg.resultFloatSeconds = sec)
 				.build());
 
 		resultCat.addEntry(entry.startIntSlider(
-						Text.translatable("rtct.config.resultFloatAmp.name"),
+						Component.translatable("rtct.config.resultFloatAmp.name"),
 						(int) Math.round(cfg.resultFloatAmplitude * 1000.0), 2, 58)
 				.setDefaultValue(30)
-				.setTextGetter(thousandths -> Text.translatable("rtct.config.resultFloatAmp.blocks",
+				.setTextGetter(thousandths -> Component.translatable("rtct.config.resultFloatAmp.blocks",
 						fmt("%.3f", thousandths / 1000.0)))
 				.setSaveConsumer(thousandths -> cfg.resultFloatAmplitude = thousandths / 1000.0)
 				.build());
@@ -246,12 +246,12 @@ public final class PreviewModMenu implements ModMenuApi {
 	}
 
 	private static Screen missingClothConfigScreen(Screen parent) {
-		return new Screen(Text.translatable("rtct.config.missingTitle")) {
+		return new Screen(Component.translatable("rtct.config.missingTitle")) {
 			@Override
 			protected void init() {
 				super.init();
-				this.addDrawableChild(ButtonWidget.builder(Text.translatable("rtct.config.back"), button -> this.close())
-						.dimensions(this.width / 2 - 50, this.height / 2, 100, 20)
+				this.addRenderableWidget(Button.builder(Component.translatable("rtct.config.back"), button -> this.onClose())
+						.bounds(this.width / 2 - 50, this.height / 2, 100, 20)
 						.build());
 			}
 		};

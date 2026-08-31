@@ -2,14 +2,14 @@ package com.example.client.mixin;
 
 import com.example.crafting.OpenTableTracker;
 
-import net.minecraft.block.Blocks;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.network.ClientPlayerInteractionManager;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.MultiPlayerGameMode;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.BlockHitResult;
 
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -23,7 +23,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * {@code CraftingTableOpenS2CPacket} 网络接收器写入）——服务端没装本 mod 时两条路都没有，
  * 渲染器读不到位置，GUI 实时预览不渲染（虽然槽位内容能本地读）。
  *
- * <p>本 mixin 拦截 {@link ClientPlayerInteractionManager#interactBlock}（客户端右键方块交互），
+ * <p>本 mixin 拦截 {@link MultiPlayerGameMode#interactBlock}（客户端右键方块交互），
  * 若目标是工作台，则在 HEAD 直接本地写入 {@link OpenTableTracker}（位置 + 当前维度）。
  * 与服务端来源<b>幂等</b>：
  * <ul>
@@ -33,21 +33,21 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  *       （客户端 handler 镜像同样应用该 mixin），闭环完整。</li>
  * </ul>
  */
-@Mixin(ClientPlayerInteractionManager.class)
+@Mixin(MultiPlayerGameMode.class)
 public abstract class ClientInteractionMixin {
 
-	@Inject(method = "interactBlock", at = @At("HEAD"))
-	private void templateMod$trackPickedTable(ClientPlayerEntity player, Hand hand,
-			BlockHitResult hitResult, CallbackInfoReturnable<ActionResult> cir) {
-		MinecraftClient client = MinecraftClient.getInstance();
-		ClientWorld world = client.world;
+	@Inject(method = "useItemOn", at = @At("HEAD"))
+	private void templateMod$trackPickedTable(LocalPlayer player, InteractionHand hand,
+			BlockHitResult hitResult, CallbackInfoReturnable<InteractionResult> cir) {
+		Minecraft client = Minecraft.getInstance();
+		ClientLevel world = client.level;
 		if (world == null) {
 			return;
 		}
 		if (world.getBlockState(hitResult.getBlockPos()).getBlock() != Blocks.CRAFTING_TABLE) {
 			return;
 		}
-		OpenTableTracker.set(hitResult.getBlockPos().toImmutable(),
-				world.getRegistryKey().getValue().toString());
+		OpenTableTracker.set(hitResult.getBlockPos(),
+				world.dimension().identifier().toString());
 	}
 }

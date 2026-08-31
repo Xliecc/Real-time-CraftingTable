@@ -21,10 +21,6 @@
 - [Fabric API](https://modrinth.com/mod/fabric-api)
 - Optional: [Mod Menu](https://modrinth.com/mod/modmenu) + [Cloth Config](https://modrinth.com/mod/cloth-config) (config screen; works fine without them)
 
-## ✅ Supported versions
-- **Minecraft Java Edition 26.2** (Fabric Loader ≥ 0.19.3, Fabric API ≥ 0.158.0+26.2, Java 25)
-- Older Minecraft 1.21.11 builds are maintained on the `1.21.11` branch
-
 ## ⚙️ Configuration
 - Mod Menu → this mod → config screen; all changes apply immediately
 - Or edit `config/real-time-crafting-table.json` directly (auto-generated on first run)

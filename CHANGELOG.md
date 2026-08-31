@@ -2,7 +2,16 @@
 
 ## [1.0.0] - 2026
 
-首个正式版本。
+### 26.2 移植
+
+- 全面迁移到 Minecraft Java Edition 26.2（mojmap 官方映射）
+- 渲染管线重构：适配 26.2 SubmitNodeCollector 体系（OrderedRenderCommandQueue 已移除）
+- 物品渲染：ItemRenderState → ItemStackRenderState，ItemModelManager → ItemModelResolver
+- 网络 API：PacketByteBufs → RegistryFriendlyByteBuf，CustomPayload → CustomPacketPayload
+- 数学库：MathHelper → Mth，RotationAxis → com.mojang.math.Axis
+- 光照：LightmapTextureManager.pack → LightCoordsUtil.getLightCoords
+- Java 25 构建（Zulu JDK 25）
+- 旧版 1.21.11 分支保留（`1.21.11` branch）
 
 ### 新增
 

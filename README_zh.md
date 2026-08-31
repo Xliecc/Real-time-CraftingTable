@@ -21,6 +21,10 @@
 - [Fabric API](https://modrinth.com/mod/fabric-api)
 - 可选：[Mod Menu](https://modrinth.com/mod/modmenu) + [Cloth Config](https://modrinth.com/mod/cloth-config)（配置界面；不装也能正常运行）
 
+## ✅ 支持版本
+- **Minecraft Java Edition 26.2**（Fabric Loader ≥ 0.19.3、Fabric API ≥ 0.158.0+26.2、Java 25）
+- 旧版 Minecraft 1.21.11 构建在 `1.21.11` 分支持续维护
+
 ## ⚙️ 配置
 - Mod Menu → 本模组 → 配置页，修改即时生效
 - 或直接编辑 `config/real-time-crafting-table.json`（首次运行自动生成）

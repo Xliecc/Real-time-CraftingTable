@@ -19,7 +19,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 public record CraftingTableOpenS2CPacket(BlockPos pos, String dimensionKey) implements CustomPacketPayload {
 
 	public static final CustomPacketPayload.Type<CraftingTableOpenS2CPacket> TYPE =
-			CustomPacketPayload.createType(TemplateMod.MOD_ID + ":crafting_table_open");
+			new CustomPacketPayload.Type<>(TemplateMod.id("crafting_table_open"));
 
 	/** 手写编解码（BlockPos + UTF 字符串）。 */
 	public static final StreamCodec<RegistryFriendlyByteBuf, CraftingTableOpenS2CPacket> STREAM_CODEC =

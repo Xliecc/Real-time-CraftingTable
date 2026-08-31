@@ -38,7 +38,7 @@ public record CraftingGridStoredS2CPacket(BlockPos pos, String dimensionKey,
 		List<String> inputJson, String resultJson) implements CustomPacketPayload {
 
 	public static final CustomPacketPayload.Type<CraftingGridStoredS2CPacket> TYPE =
-			CustomPacketPayload.createType(TemplateMod.MOD_ID + ":crafting_grid_stored");
+			new CustomPacketPayload.Type<>(TemplateMod.id("crafting_grid_stored"));
 
 	private static final int GRID_SIZE = 9;
 

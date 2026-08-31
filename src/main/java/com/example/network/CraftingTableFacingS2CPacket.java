@@ -28,7 +28,7 @@ import java.util.UUID;
 public record CraftingTableFacingS2CPacket(BlockPos pos, int sector, UUID operatorUuid) implements CustomPacketPayload {
 
 	public static final CustomPacketPayload.Type<CraftingTableFacingS2CPacket> TYPE =
-			CustomPacketPayload.createType(TemplateMod.MOD_ID + ":crafting_table_facing");
+			new CustomPacketPayload.Type<>(TemplateMod.id("crafting_table_facing"));
 
 	public static final StreamCodec<RegistryFriendlyByteBuf, CraftingTableFacingS2CPacket> STREAM_CODEC =
 			StreamCodec.of(

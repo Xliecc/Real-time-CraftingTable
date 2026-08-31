@@ -21,7 +21,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 public record KeepPreferenceC2SPacket(boolean keepItemsWhenClosed) implements CustomPacketPayload {
 
 	public static final CustomPacketPayload.Type<KeepPreferenceC2SPacket> TYPE =
-			CustomPacketPayload.createType(TemplateMod.MOD_ID + ":keep_preference");
+			new CustomPacketPayload.Type<>(TemplateMod.id("keep_preference"));
 
 	/** 手写编解码（单布尔）。 */
 	public static final StreamCodec<RegistryFriendlyByteBuf, KeepPreferenceC2SPacket> STREAM_CODEC =

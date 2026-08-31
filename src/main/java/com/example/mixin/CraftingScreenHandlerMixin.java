@@ -85,7 +85,7 @@ public abstract class CraftingScreenHandlerMixin {
 
 	/** 网格内容变化后重算合成结果。 */
 	@Shadow
-	public abstract void onContentChanged(Inventory inventory);
+	public abstract void slotsChanged(net.minecraft.world.Container container);
 
 	/**
 	 * 打开工作台（创建菜单）时：登记打开者、把该位置<b>权威内容</b>同步进自己的 3×3 网格
@@ -98,7 +98,7 @@ public abstract class CraftingScreenHandlerMixin {
 	 * 编辑经 {@link #templateMod$syncLiveGrid} 更新权威并写回所有打开者的网格槽位，
 	 * 任何人的操作都实时反映到所有人（后写覆盖）。
 	 */
-	@Inject(method = "<init>(ILnet/minecraft/entity/player/Inventory;Lnet/minecraft/screen/ContainerLevelAccess;)V",
+	@Inject(method = "<init>(ILnet/minecraft/world/entity/player/Inventory;Lnet/minecraft/world/inventory/ContainerLevelAccess;)V",
 			at = @At("RETURN"))
 	private void templateMod$restoreGridOnOpen(int syncId, Inventory playerInventory,
 			ContainerLevelAccess context, CallbackInfo ci) {
@@ -186,8 +186,8 @@ public abstract class CraftingScreenHandlerMixin {
 	 * <p>写回他人 handler 时 setStack 会再次触发对方的 onContentChanged → 本方法 ——
 	 * 但内容相同：权威 store 幂等、广播 clientApplyIfChanged 幂等、槽位 diff 幂等，链终止。
 	 */
-	@Inject(method = "onContentChanged", at = @At("TAIL"))
-	private void templateMod$syncLiveGrid(Inventory inventory, CallbackInfo ci) {
+	@Inject(method = "slotsChanged", at = @At("TAIL"))
+	private void templateMod$syncLiveGrid(net.minecraft.world.Container container, CallbackInfo ci) {
 		// 仅原版合成台：子类菜单（VisualWorkbench 等）有自己的可视化与存储，不接管。
 		if (((Object) this).getClass() != CraftingMenu.class) {
 			return;
@@ -211,7 +211,7 @@ public abstract class CraftingScreenHandlerMixin {
 	 * （手动对网格操作一下 = 触发一次 filling=false 的 onContentChanged 才把结果带上存储）。
 	 * 仅服务端（ServerLevel 参数由 vanilla 传入）执行，客户端镜像此方法不走 context 无副作用。
 	 */
-	@Inject(method = "onInputSlotFillFinish", at = @At("TAIL"))
+	@Inject(method = "finishPlacingRecipe", at = @At("TAIL"))
 	private void templateMod$syncOnInputSlotFillFinish(ServerLevel serverWorld,
 			net.minecraft.world.item.crafting.RecipeHolder<net.minecraft.world.item.crafting.CraftingRecipe> recipe, CallbackInfo ci) {
 		this.context.execute((world, pos) -> {
@@ -328,8 +328,8 @@ public abstract class CraftingScreenHandlerMixin {
 	 *       最后一人（物品归属正确、不复制），清除权威记录并广播空。</li>
 	 * </ul>
 	 */
-	@Inject(method = "onClosed",
-			at = @At(value = "INVOKE", target = "Lnet/minecraft/screen/ContainerLevelAccess;run(Ljava/util/function/BiConsumer;)V"),
+	@Inject(method = "removed",
+			at = @At(value = "INVOKE", target = "Lnet/minecraft/world/inventory/ContainerLevelAccess;execute(Ljava/util/function/BiConsumer;)V"),
 			cancellable = true)
 	private void templateMod$keepGridOnClose(Player player, CallbackInfo ci) {
 		// 仅原版合成台：子类菜单（VisualWorkbench 等）走自己的关桌逻辑（方块实体存档），

@@ -36,10 +36,10 @@ loom {
 	}
 }
 
-// 产物 jar 文件名：real-time-crafting-table-<version>+mc<MC版本>.jar
-// 例如：real-time-crafting-table-1.0.0+mc26.2.jar
+// 产物 jar 文件名：Real-time CraftingTable-<version>+mc<MC版本>.jar
+// 例如：Real-time CraftingTable-1.0.0+mc26.2.jar
 base {
-	archivesName = "real-time-crafting-table"
+	archivesName = "Real-time CraftingTable"
 }
 version = "${project.version}+mc${project.minecraft_version}"
 

@@ -67,7 +67,7 @@ public abstract class CraftingScreenHandlerMixin {
 
 	@Shadow
 	@Final
-	private ContainerLevelAccess context;
+	private ContainerLevelAccess access;
 
 	/** 该菜单所属玩家（CraftingMenu 自身字段；onContentChanged 时用于「最后操作者」朝向）。 */
 	@Shadow
@@ -109,7 +109,7 @@ public abstract class CraftingScreenHandlerMixin {
 		if (((Object) this).getClass() != CraftingMenu.class) {
 			return;
 		}
-		this.context.execute((world, pos) -> {
+		this.access.execute((world, pos) -> {
 			if (world instanceof ServerLevel serverWorld) {
 				BlockPos immutablePos = pos;
 				String dimensionKey = world.dimension().identifier().toString();
@@ -196,7 +196,7 @@ public abstract class CraftingScreenHandlerMixin {
 		if (sharingSync) {
 			return;
 		}
-		this.context.execute((world, pos) -> {
+		this.access.execute((world, pos) -> {
 			if (!(world instanceof ServerLevel serverWorld)) return;
 			templateMod$storeAndSync(serverWorld, pos);
 		});
@@ -214,7 +214,7 @@ public abstract class CraftingScreenHandlerMixin {
 	@Inject(method = "finishPlacingRecipe", at = @At("TAIL"))
 	private void templateMod$syncOnInputSlotFillFinish(ServerLevel serverWorld,
 			net.minecraft.world.item.crafting.RecipeHolder<net.minecraft.world.item.crafting.CraftingRecipe> recipe, CallbackInfo ci) {
-		this.context.execute((world, pos) -> {
+		this.access.execute((world, pos) -> {
 			if (!(world instanceof ServerLevel sw)) return;
 			templateMod$storeAndSync(sw, pos);
 		});
@@ -357,7 +357,7 @@ public abstract class CraftingScreenHandlerMixin {
 		final List<ItemStack> finalGrid = grid;
 		final ItemStack finalResult = result;
 		final boolean finalKeep = keep;
-		this.context.execute((world, pos) -> {
+		this.access.execute((world, pos) -> {
 			if (world instanceof ServerLevel serverWorld) {
 				BlockPos immutablePos = pos;
 				String dimensionKey = world.dimension().identifier().toString();

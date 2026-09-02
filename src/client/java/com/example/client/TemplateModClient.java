@@ -37,7 +37,6 @@ public class TemplateModClient implements ClientModInitializer {
 		// 玩家判定关桌是否保留，而非用房主/服务端全局配置）。⋆⋆ 客户端在各端持有独立 Config。
 		// 加事件时发送一次（基线），每次打开工作台再重发一次（覆盖运行中改配置的情况）。
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> sendKeepPref());
-		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> { });
 
 		// S2C 接收器：网络线程收到包后转到客户端主线程写入（context.client().execute）。
 		// ① 开桌坐标 → OpenTableTracker（渲染器在 CraftingScreen 打开期间读取定位实时预览）。

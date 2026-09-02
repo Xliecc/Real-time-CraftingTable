@@ -33,7 +33,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.WeakHashMap;
 
 /**
  * 原版工作台（Crafting Table）的可视化合成预览渲染器。
@@ -265,10 +264,16 @@ public final class CraftingPreviewRenderer {
 	 * 但结果只依赖 (displayContext, 物品栈内容)——台上物品内容未变时每帧重复调用是浪费。
 	 * 缓存命中直接复用上一帧构建好的 {@link ItemStackRenderState}（其渲染为只读提交，缩放/旋转
 	 * 都在 matrices 上做，不入状态），内容/显示上下文变化时才重新 update。
-	 * WeakHashMap 弱 key：工作台记录/槽位栈被回收时条目自动清理，无泄漏。
+	 * <p>HashMap + 显式清理：key 是 (displayContext, 槽位 ItemStack <b>引用</b>)，槽位栈可变，
+	 * 不适合 WeakHashMap 弱 key（可变对象哈希隐患）。改为强引用 HashMap，靠
+	 * {@link #ITEM_STATE_CACHE_MAX} 软上限（超限整表清空，重建代价小）与维度切换
+	 * （{@code syncTransitions} 内随 {@link #LAST_STORE} 一并清空）兜底，内存有界。
 	 * 仅渲染线程访问（服务端不触碰）。
 	 */
-	private static final Map<ItemStateKey, ItemStackRenderState> ITEM_STATE_CACHE = new WeakHashMap<>();
+	private static final Map<ItemStateKey, ItemStackRenderState> ITEM_STATE_CACHE = new HashMap<>();
+
+	/** {@link #ITEM_STATE_CACHE} 软上限：超过后整表清空重建（防跨物品/跨世界无限增长）。 */
+	private static final int ITEM_STATE_CACHE_MAX = 512;
 
 	private CraftingPreviewRenderer() {
 	}
@@ -303,6 +308,12 @@ public final class CraftingPreviewRenderer {
 			return;
 		}
 
+		// 物品模型缓存软上限：超过后整表清空重建（防跨物品/跨世界无限增长；重建代价小）。
+		// 每帧一次 O(1) 的 size() 检查，可忽略。
+		if (ITEM_STATE_CACHE.size() > ITEM_STATE_CACHE_MAX) {
+			ITEM_STATE_CACHE.clear();
+		}
+
 		// 清理朝向状态中「已被拆掉/换成别方块」的工作台。保留仍存在的（含关桌后没再渲染的）——
 		// 这样关桌后换个方向再开桌时，旧朝向还在，能播放 A→B 的旋转动画（而不是每次直接吸附）。
 		FACING_TOUCHED.clear();
@@ -310,6 +321,11 @@ public final class CraftingPreviewRenderer {
 
 		// 生长动画状态同样只保留「仍是工作台」的位置（内存有界，与朝向状态同规模）。
 		GROWTH_STATE.keySet().removeIf(key -> world.getBlockState(key.pos()).getBlock() != Blocks.CRAFTING_TABLE);
+
+		// LAST_GUI 同理：方块已不是工作台（被拆/替换/换维度后旧坐标残留）的记录不再有
+		// 「关闭检测」意义，直接清理，防跨维度/跨世界堆积（历史 bug：换世界后 LAST_GUI
+		// 残留旧维度坐标，渲染器每帧多一条无效关闭检测）。
+		LAST_GUI.keySet().removeIf(pos -> world.getBlockState(pos).getBlock() != Blocks.CRAFTING_TABLE);
 
 		float tickDelta = client.getDeltaTracker().getGameTimeDeltaPartialTick(true);
 		// 与 render() 同一单调时钟（world.getOverworldClockTime()）：动画相位/朝向转场与正常视图严格一致。
@@ -688,6 +704,7 @@ public final class CraftingPreviewRenderer {
 		if (!dimKey.equals(lastStoreDimKey)) {
 			lastStoreDimKey = dimKey;
 			LAST_STORE.clear();
+			ITEM_STATE_CACHE.clear(); // 维度切换：物品模型状态一并释放（模型基于旧维度资源）
 		}
 		// P0-3 引用快照：grid/result 直接存缓存引用（不深拷贝），data 对象身份（==）即内容版本——
 		// cache 写入路径全部整体替换新 GridData（normalize 深拷贝），故引用不变 ⟺ 内容没变。

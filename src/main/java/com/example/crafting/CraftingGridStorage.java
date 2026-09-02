@@ -133,31 +133,6 @@ public final class CraftingGridStorage {
 	}
 
 	/**
-	 * 把附魔组件按 {@code ResourceKey} 重解引用为注册表规范条目。
-	 *
-	 * <p>动机：部分附魔相关整合包（如 enchantment-table 自定义附魔台）给物品附加魔时，
-	 * 附魔条目携带的 {@code Enchantment} <b>值对象</b>并非注册表内的规范实例（对象身份不同，
-	 * 仅 key 相同）。原版/自订包用 {@code ItemStack.PACKET_CODEC} 编码时按值对象身份查 raw id
-	 * （{@code Registry.getRawId}），查不到就抛 {@code Can't find id for Reference{...}} 断线。
-	 * 这里用 {@code reg.get(key)} 拿注册表规范条目重建组件，值对象与注册表一致，编码不再炸。
-	 * 无法重解引用的条目（无 key 或 key 缺失）直接丢弃——这类条目本来也无法过网络编码。
-	 *
-	 * @param reg 服务端附魔注册表（能解析全部 key）
-	 * @param stack 待规范化栈（未改原对象，返回副本或原对象）
-	 */
-	public static ItemStack canonicalizeEnchantments(
-			net.minecraft.core.Registry<net.minecraft.world.item.enchantment.Enchantment> reg, ItemStack stack) {
-		// 26.2（Java Edition 26.2）不再需要此项规范化：
-		//   - 附魔组件在 26.2 已是 Holder 体系（net.minecraft.core.Holder），网络传输走 ResourceKey
-		//     按 id 查找，不依赖条目对象身份（旧 1.21 时代 PACKET_CODEC 按 raw id 查值对象身份
-		//     才会炸「Can't find id for Reference」）；
-		//   - 本模组联机包已改用 JSON 字符串传输（CraftingGridStoredS2CPacket.toJson/fromJson），
-		//     走 RegistryOps + ItemStack.CODEC，按 key 编解码，天然规避对象身份问题。
-		// 故直接返回原栈（保留签名以兼容调用方）。
-		return stack;
-	}
-
-	/**
 	 * 把合成网格（前 {@code GRID_SIZE} 个槽位）及结果槽存入该位置并<b>落盘</b>；
 	 * 随后调用方负责清空网格。低频「终态」时机使用：关桌保留（最后一人）等。
 	 */
@@ -176,17 +151,9 @@ public final class CraftingGridStorage {
 		synchronized (LOCK) {
 			ensureLoaded(world);
 			String k = key(world, pos);
-			net.minecraft.core.Registry<net.minecraft.world.item.enchantment.Enchantment> reg =
-					world.getServer().registryAccess()
-							.lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT);
 			List<ItemStack> norm = normalize(inputs);
-			List<ItemStack> canon = new ArrayList<>(norm.size());
-			for (ItemStack s : norm) {
-				canon.add(canonicalizeEnchantments(reg, s));
-			}
-			ItemStack canonResult = canonicalizeEnchantments(reg,
-					result == null ? ItemStack.EMPTY : result.copy());
-			cache.put(k, new GridData(canon, canonResult));
+			ItemStack res = result == null ? ItemStack.EMPTY : result.copy();
+			cache.put(k, new GridData(norm, res));
 		}
 	}
 

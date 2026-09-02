@@ -48,7 +48,7 @@ import java.util.UUID;
  *
  * <p>成员访问规则（踩坑记录）：
  * <ul>
- *   <li>{@code context}、{@code getInputGridSlots()}、{@code onContentChanged} 均声明在目标类
+ *   <li>{@code access}、{@code getInputGridSlots()}、{@code slotsChanged} 均声明在目标类
  *       {@code CraftingMenu} 自身，可 {@code @Shadow}；</li>
  *   <li>**不能** {@code @Shadow} 父类 {@code AbstractCraftingMenu} 的继承字段
  *       （如 {@code craftingResultInventory}）：mixin 的 @Shadow 字段只在目标类自身查找，不遍历
@@ -69,12 +69,12 @@ public abstract class CraftingScreenHandlerMixin {
 	@Final
 	private ContainerLevelAccess access;
 
-	/** 该菜单所属玩家（CraftingMenu 自身字段；onContentChanged 时用于「最后操作者」朝向）。 */
+	/** 该菜单所属玩家（CraftingMenu 自身字段；slotsChanged 时用于「最后操作者」朝向）。 */
 	@Shadow
 	@Final
 	private Player player;
 
-	/** 共享写回重入保护（服务端单线程）：写回他人槽位会触发对方 onContentChanged →
+	/** 共享写回重入保护（服务端单线程）：写回他人槽位会触发对方 slotsChanged →
 	 * 对方 syncLiveGrid 再进来时跳过（否则对方会被误记为「最后操作者」并重复广播）。
 	 * 仅服务端线程访问，普通字段即可。 */
 	private static boolean sharingSync = false;
@@ -152,25 +152,19 @@ public abstract class CraftingScreenHandlerMixin {
 					if (stored != null) {
 						List<Slot> slots = this.getInputGridSlots();
 						List<ItemStack> inputs = stored.inputs();
-						// 恢复进槽前规范化附魔条目：按 key 重解引用为注册表规范实例（值对象与注册表
-						// 一致），避免原版 container_set_content 编码时因「外来值对象」查不到 raw id 断线
-						// （Can't find id for Reference{...}）。规范化的副本替换原缓存数据进槽。
-						net.minecraft.core.Registry<net.minecraft.world.item.enchantment.Enchantment> reg =
-								serverWorld.getServer().registryAccess()
-										.lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT);
+						// 26.2 起无需规范化附魔条目（Holder 体系走 ResourceKey 按 id 查找），直接进槽。
 						for (int i = 0; i < slots.size() && i < inputs.size() && i < GRID_SIZE; i++) {
 							ItemStack stack = inputs.get(i);
 							if (stack == null || stack.isEmpty()) {
 								slots.get(i).set(ItemStack.EMPTY);
 								continue;
 							}
-							slots.get(i).set(CraftingGridStorage.canonicalizeEnchantments(reg, stack));
+							slots.get(i).set(stack);
 						}
 						// 结果槽：客户端镜像不自己重算，服务端打开时直接写权威结果（共享显示）。
 						CraftingMenu self = (CraftingMenu) (Object) this;
 						ItemStack storedResult = stored.result();
-						self.getSlot(0).set(storedResult != null
-								? CraftingGridStorage.canonicalizeEnchantments(reg, storedResult) : ItemStack.EMPTY);
+						self.getSlot(0).set(storedResult != null ? storedResult : ItemStack.EMPTY);
 					}
 				} finally {
 					sharingSync = false;
@@ -284,12 +278,9 @@ public abstract class CraftingScreenHandlerMixin {
 		}
 	}
 
-	/** 把权威网格/结果同步进另一个打开的 handler（diff 幂等；规范化附魔防断线）。 */
+	/** 把权威网格/结果同步进另一个打开的 handler（diff 幂等）。 */
 	private static void syncSlotsTo(CraftingMenu other, List<ItemStack> grid,
 			ItemStack result, ServerLevel serverWorld) {
-		net.minecraft.core.Registry<net.minecraft.world.item.enchantment.Enchantment> reg =
-				serverWorld.getServer().registryAccess()
-						.lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT);
 		List<Slot> slots = other.getInputGridSlots();
 		for (int i = 0; i < slots.size() && i < GRID_SIZE; i++) {
 			ItemStack target = i < grid.size() ? grid.get(i) : ItemStack.EMPTY;
@@ -298,24 +289,24 @@ public abstract class CraftingScreenHandlerMixin {
 			}
 			if (!ItemStack.matches(slots.get(i).getItem(), target)) {
 				slots.get(i).set(target.isEmpty()
-						? ItemStack.EMPTY : CraftingGridStorage.canonicalizeEnchantments(reg, target.copy()));
+						? ItemStack.EMPTY : target.copy());
 			}
 		}
 		Slot resultSlot = other.getSlot(0);
 		ItemStack targetResult = result != null ? result : ItemStack.EMPTY;
 		if (!ItemStack.matches(resultSlot.getItem(), targetResult)) {
 			resultSlot.set(targetResult.isEmpty()
-					? ItemStack.EMPTY : CraftingGridStorage.canonicalizeEnchantments(reg, targetResult.copy()));
+					? ItemStack.EMPTY : targetResult.copy());
 		}
 	}
 
 
 	/**
-	 * 关闭工作台时在 vanilla 的 {@code context.execute(... dropInventory ...)} 之前拦截。
+	 * 关闭工作台时在 vanilla 的 {@code access.execute(... dropInventory ...)} 之前拦截。
 	 *
 	 * <p>关闭是双向调用：客户端镜像（{@code closeAbstractContainerMenu}）与服务端（收到关闭数据包）
-	 * 都会执行 {@code onClosed}。客户端镜像的 {@code context} 为 EMPTY、跑不了
-	 * {@code context.run}；服务端在真实 {@code context.run} 里执行最终语义。
+	 * 都会执行 {@code removed}。客户端镜像的 {@code access} 为 EMPTY、跑不了
+	 * {@code access.execute}；服务端在真实 {@code access.execute} 里执行最终语义。
 	 *
 	 * <p><b>共享合成网格关闭语义</b>（用户需求：双方 GUI 完全实时同步）：
 	 * <ul>

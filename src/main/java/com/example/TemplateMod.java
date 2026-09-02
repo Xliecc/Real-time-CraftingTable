@@ -87,7 +87,7 @@ public class TemplateMod implements ModInitializer {
 		});
 
 		// 工作台方块被破坏/替换时掉落保留材料 + 清记录：统一由 common mixin
-		// CraftingTableBreakMixin（BlockBehaviour.onStateReplaced）处理——与箱子同源，覆盖
+		// CraftingTableBreakMixin（注入 Level.setBlock，26.2 的方块设置统一入口）处理——覆盖
 		// 玩家挖、爆炸、活塞、流体、火焰等一切方式，且避免 PlayerBlockBreakEvents 双份掉落。
 		LOGGER.info("Crafting preview mod initialized (multiplayer-ready).");
 
